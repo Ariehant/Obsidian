@@ -1,0 +1,6 @@
+{
+  "name": "@basalt/desktop",
+  "private": true,
+  "version": "0.0.0",
+  "main": "dist/main.js"
+}

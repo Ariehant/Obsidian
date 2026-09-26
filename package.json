@@ -1,0 +1,46 @@
+{
+  "name": "basalt",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Clean-room, Obsidian-compatible Markdown knowledge base",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "start": "npm run build && electron apps/desktop",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && playwright test",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.56",
+    "@types/node": "^22.20.4",
+    "electron": "^44.4.5",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.11.0",
+    "happy-dom": "^20.14.5",
+    "obsidian": "^1.13.1",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  },
+  "overrides": {
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13"
+  },
+  "type": "module"
+}

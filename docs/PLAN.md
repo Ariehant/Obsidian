@@ -28,17 +28,17 @@ plugins and themes unmodified.
 
 ## 1. Target stack
 
-| Concern | Choice | Why |
-|---|---|---|
-| Shell | **Electron** | Plugins call `require('fs')`, `electron` and Node APIs directly. Tauri would break most of them. |
-| Language | TypeScript (strict) | Matches the plugin API typings. |
-| Editor | **CodeMirror 6** | Obsidian's editor is CM6. Plugins reach `editor.cm` / `EditorView` and register CM6 extensions. |
-| Markdown | `markdown-it` or micromark + custom extensions for reading view; Lezer Markdown grammar + extensions for the editor | We need one parser we control for wikilinks, embeds, callouts, block refs, etc. |
-| UI | **Vanilla DOM + Obsidian-style DOM helpers** (`createEl`, `createDiv`, `setIcon`) | The plugin API is imperative DOM. Adding React/Vue would fight plugins and themes. |
-| Styling | Plain CSS on CSS custom properties, using the **same variable names** Obsidian documents (`--background-primary`, `--text-normal`, `--interactive-accent`, …) | Existing themes and snippets need this to work. |
-| Build | esbuild (app + workers), electron-builder (packaging) | Fast. Plugins are built with esbuild too. |
-| Tests | Vitest (unit), Playwright for Electron (E2E + screenshot diff) | |
-| Mobile (later) | Capacitor over the same web bundle, with a `CapacitorAdapter` for the file system | Same approach Obsidian mobile takes. |
+| Concern        | Choice                                                                                                                                                        | Why                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Shell          | **Electron**                                                                                                                                                  | Plugins call `require('fs')`, `electron` and Node APIs directly. Tauri would break most of them. |
+| Language       | TypeScript (strict)                                                                                                                                           | Matches the plugin API typings.                                                                  |
+| Editor         | **CodeMirror 6**                                                                                                                                              | Obsidian's editor is CM6. Plugins reach `editor.cm` / `EditorView` and register CM6 extensions.  |
+| Markdown       | `markdown-it` or micromark + custom extensions for reading view; Lezer Markdown grammar + extensions for the editor                                           | We need one parser we control for wikilinks, embeds, callouts, block refs, etc.                  |
+| UI             | **Vanilla DOM + Obsidian-style DOM helpers** (`createEl`, `createDiv`, `setIcon`)                                                                             | The plugin API is imperative DOM. Adding React/Vue would fight plugins and themes.               |
+| Styling        | Plain CSS on CSS custom properties, using the **same variable names** Obsidian documents (`--background-primary`, `--text-normal`, `--interactive-accent`, …) | Existing themes and snippets need this to work.                                                  |
+| Build          | esbuild (app + workers), electron-builder (packaging)                                                                                                         | Fast. Plugins are built with esbuild too.                                                        |
+| Tests          | Vitest (unit), Playwright for Electron (E2E + screenshot diff)                                                                                                |                                                                                                  |
+| Mobile (later) | Capacitor over the same web bundle, with a `CapacitorAdapter` for the file system                                                                             | Same approach Obsidian mobile takes.                                                             |
 
 Monorepo layout:
 
@@ -76,6 +76,7 @@ App
 ```
 
 Rules:
+
 - `packages/core` is the source of truth. Views subscribe to model events and don't own state.
 - Parsing runs in a worker. The UI thread never blocks on a vault-wide operation.
 - The public API only grows by adding things. Anything in `obsidian.d.ts` gets implemented
@@ -90,12 +91,14 @@ Each phase ends with something you can demo and a parity checklist (§5). Effort
 2–3 experienced engineers. They're rough estimates.
 
 ### Phase 0: Foundations (1–2 weeks)
+
 - Monorepo, TS configs, lint/format, esbuild, Electron main/preload, CI (lint, typecheck, unit, E2E).
 - `Events` base class, `Component` lifecycle (`load`, `onload`, `register*`, `addChild`), DOM helpers.
 - Icon system (Lucide) and `setIcon`.
 - CSS variable token sheet with light and dark base themes.
 
 ### Phase 1: Vault and a working editor (4–6 weeks)
+
 - Open vault / vault switcher / create vault. Vault list stored in the app-data dir.
 - `FileSystemAdapter`, file tree model, chokidar watcher, debounced external-change handling.
 - File explorer: create, rename, delete (to system trash / `.trash`), drag-move, sort, reveal.
@@ -108,10 +111,11 @@ Each phase ends with something you can demo and a parity checklist (§5). Effort
   (notes, headings, blocks, images, audio, video, PDF), `^block-ids`, `#tags` and `#nested/tags`,
   YAML frontmatter, `> [!callout]+/-` (foldable), `==highlight==`, `%%comments%%`,
   footnotes (inline too), task lists with custom statuses, tables, `$math$` / `$$math$$`
-  (MathJax), ```` ```mermaid ````, code highlighting, HTML passthrough (sanitised).
+  (MathJax), ` ```mermaid `, code highlighting, HTML passthrough (sanitised).
 - Autosave (~2 s debounce), undo history per file.
 
 ### Phase 2: Links and the metadata graph (3–4 weeks)
+
 - MetadataCache running in a worker, persisted to IndexedDB for fast startup on large vaults.
 - Link resolution rules: shortest path, relative, or absolute (the "New link format" setting),
   case-insensitive matching, attachments folder setting.
@@ -122,6 +126,7 @@ Each phase ends with something you can demo and a parity checklist (§5). Effort
   `types.json`, and the "All properties" view.
 
 ### Phase 3: Workspace (4–5 weeks)
+
 - Splits, tab groups, drag tabs to split, stacked tabs, pinned tabs, linked panes.
 - Left and right sidebars with ribbon, collapsible and resizable.
 - Navigation history (back/forward per leaf).
@@ -130,14 +135,17 @@ Each phase ends with something you can demo and a parity checklist (§5). Effort
 - Status bar.
 
 ### Phase 4: Commands, search, navigation (3 weeks)
+
 - Command palette and Quick switcher (fuzzy matching with the same scoring feel, aliases, headings).
 - Hotkey manager: defaults, per-command overrides in `hotkeys.json`, conflict display.
 - Search: full-text plus operators (`file:`, `path:`, `tag:`, `line:`, `block:`, `section:`,
-  `task:`, `[property:value]`, regex, boolean). Results pane and embedded ```` ```query ```` blocks.
+  `task:`, `[property:value]`, regex, boolean). Results pane and embedded ` ```query ` blocks.
 - In-file find/replace.
 
 ### Phase 5: Core plugins (6–8 weeks, can run in parallel)
+
 Priority order:
+
 1. Daily notes, Templates, Bookmarks, Outline, Tags, Word count, File recovery (snapshots).
 2. **Graph view**: global and local, forces, filters, groups, colour by query. WebGL renderer
    (PixiJS) with a d3-force simulation in a worker so it scales to 10k+ nodes.
@@ -149,6 +157,7 @@ Priority order:
    Random note, Format converter, Sync/Publish placeholders (see §3 Phase 9).
 
 ### Phase 6: Settings, appearance, themes (2–3 weeks)
+
 - Settings modal, same section structure (Editor, Files & links, Appearance, Hotkeys, Core
   plugins, Community plugins).
 - `app.json`, `appearance.json` (base theme, accent colour, font sizes, fonts, translucency).
@@ -157,6 +166,7 @@ Priority order:
   this with screenshot tests against a reference vault.
 
 ### Phase 7: Community plugin compatibility (6–10 weeks, ongoing)
+
 - A `require('obsidian')` shim exporting classes and functions that match `obsidian.d.ts`:
   `Plugin`, `PluginSettingTab`, `Setting`, `Modal`, `Notice`, `Menu`, `ItemView`,
   `MarkdownView`, `MarkdownRenderer`, `MarkdownRenderChild`, `EditorSuggest`,
@@ -174,12 +184,14 @@ Priority order:
   driven by the compatibility matrix.
 
 ### Phase 8: Polish and platform (ongoing)
+
 - `obsidian://`-style URI scheme under our own protocol name, "Open vault as folder",
   "Show in system explorer", spellcheck, i18n, RTL, accessibility, auto-update, crash
   reporting (opt-in).
 - Performance budgets (§6).
 
 ### Phase 9: Optional services (separate project)
+
 - **Sync:** end-to-end encrypted, version history, selective sync. Needs a backend service
   plus conflict resolution (diff-match-patch three-way merge for Markdown).
 - **Publish:** static-site export or hosted publishing.
@@ -222,13 +234,13 @@ attachments · Spellcheck · i18n.
 
 ## 6. Performance budgets
 
-| Metric | Budget |
-|---|---|
-| Cold start, 10k-note vault (cached) | < 1.5 s to editable |
-| First index, 10k notes | < 10 s, off the UI thread |
-| Keystroke latency in Live Preview | < 16 ms p95 |
-| Quick switcher on 50k files | < 50 ms per keystroke |
-| Graph view, 10k nodes | 60 fps pan/zoom |
+| Metric                              | Budget                    |
+| ----------------------------------- | ------------------------- |
+| Cold start, 10k-note vault (cached) | < 1.5 s to editable       |
+| First index, 10k notes              | < 10 s, off the UI thread |
+| Keystroke latency in Live Preview   | < 16 ms p95               |
+| Quick switcher on 50k files         | < 50 ms per keystroke     |
+| Graph view, 10k nodes               | 60 fps pan/zoom           |
 
 We'll keep a benchmark vault generator in `fixtures/` and run perf tests in CI.
 
@@ -236,28 +248,50 @@ We'll keep a benchmark vault generator in `fixtures/` and run perf tests in CI.
 
 ## 7. Main risks
 
-| Risk | Mitigation |
-|---|---|
-| Live Preview complexity (cursor-aware hiding, widgets, tables) | Build it early (Phase 1), cover it heavily with E2E tests, and iterate |
-| Plugins depending on undocumented internals | Let the compatibility matrix decide which internals to add |
-| Theme breakage from DOM/class drift | Golden DOM tests; freeze class names once they match |
-| Trademark/IP | Own name and branding, clean-room reimplementation, no copied assets |
-| Scope explosion | Ship the desktop v1 at the end of Phase 6. Plugin compatibility and services come later |
+| Risk                                                           | Mitigation                                                                              |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Live Preview complexity (cursor-aware hiding, widgets, tables) | Build it early (Phase 1), cover it heavily with E2E tests, and iterate                  |
+| Plugins depending on undocumented internals                    | Let the compatibility matrix decide which internals to add                              |
+| Theme breakage from DOM/class drift                            | Golden DOM tests; freeze class names once they match                                    |
+| Trademark/IP                                                   | Own name and branding, clean-room reimplementation, no copied assets                    |
+| Scope explosion                                                | Ship the desktop v1 at the end of Phase 6. Plugin compatibility and services come later |
 
 ---
 
-## 8. Decisions needed from you
+## 8. Decisions
 
-1. **Product name** (replaces "Basalt").
-2. **Plugin compatibility:** a hard requirement for v1, or post-v1? This decides Electron vs Tauri
-   and how strictly we mirror DOM and class names.
-3. **Platforms:** desktop only for v1, or mobile too?
-4. **Sync/Publish:** in scope at all?
-5. **Team and timeline** to calibrate the phases.
+| Question             | Decision                                                                                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Plugin compatibility | **Required for v1.** Electron is locked in, the renderer runs with Node integration ([ADR 0002](adr/0002-electron-renderer-node-integration.md)), and DOM/class names mirror what themes and plugins target. |
+| Platforms            | **Desktop first.** Mobile (Capacitor) stays in Phase 9.                                                                                                                                                      |
+| Product name         | Open. "Basalt" is the working name.                                                                                                                                                                          |
+| Sync/Publish         | Open. Not started before desktop v1.                                                                                                                                                                         |
+| Team and timeline    | Open.                                                                                                                                                                                                        |
 
-## 9. Immediate next steps (Phase 0)
+## 9. Status
 
-1. Scaffold the monorepo, Electron shell and CI.
-2. Implement `Events`, `Component`, DOM helpers and the CSS token sheet.
-3. `FileSystemAdapter` + `Vault` + file explorer + CM6 source-mode editor → open a folder, browse, edit, autosave.
-4. Start the OFM fixture corpus and the golden-test harness.
+### Phase 0: done
+
+- npm-workspaces monorepo (`packages/core`, `packages/ui`, `packages/editor`, `apps/desktop`),
+  esbuild build, ESLint + Prettier, Vitest, Playwright-for-Electron, GitHub Actions CI.
+- `Events`, `Component`, `normalizePath`, `TAbstractFile`/`TFile`/`TFolder`, `DataAdapter`,
+  `FileSystemAdapter`, `Vault` (full plugin-API method set, file watcher, serialised mutations).
+- Every global DOM helper from the plugin typings (`createEl`, `empty`, `addClass`, delegated
+  `on`/`off`, …), plus `setIcon`/`addIcon`/`getIcon`/`getIconIds` over all Lucide icons.
+- CSS tokens using the documented theme variable names, with light and dark themes.
+- Desktop app: vault chooser with recent vaults, file explorer (expand/collapse, new
+  note/folder, inline rename, extension tags), CodeMirror 6 source editor, 2 s autosave (plus
+  save on switch and on close), live reload on external edits, rename from the title, word count.
+- Checked against the official typings at compile time
+  ([ADR 0003](adr/0003-plugin-api-conformance.md)).
+
+Moved to Phase 1: the Markdown fixture corpus and golden-test harness. They belong with the
+parser, which is where Phase 1 starts.
+
+### Phase 1: next
+
+1. Obsidian Markdown parser (Lezer extensions for the editor, renderer for reading view),
+   with the fixture corpus and golden DOM tests.
+2. Live Preview.
+3. File explorer context menu (rename, delete, reveal), `Menu`, `Notice` and `Modal` API classes.
+4. Incremental explorer updates, drag-and-drop moves.
