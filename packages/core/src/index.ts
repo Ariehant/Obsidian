@@ -4,5 +4,6 @@ export * from './component';
 export * from './events';
 export * from './files';
 export * from './fs-adapter';
+export * from './link-resolver';
 export * from './path';
 export * from './vault';
