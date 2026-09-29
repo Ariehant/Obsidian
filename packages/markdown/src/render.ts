@@ -54,7 +54,7 @@ function createPurifier(): DOMPurify {
   const probe = document.createElement('div');
   probe.appendChild(
     p.sanitize(
-      '<b>ok</b><img src="x" onerror="1"><script>1</script><a href="javascript:1">x</a>',
+      '<b>ok</b><img onerror="1"><script>1</script><a href="javascript:1">x</a>',
       SANITIZE_CONFIG,
     ) as unknown as Node,
   );
@@ -136,7 +136,14 @@ function processImages(el: HTMLElement, options: RenderOptions): void {
       /* keep as written */
     }
     const file = options.host.resolveLink(linkpath, options.sourcePath);
-    if (file) img.setAttribute('src', options.host.resourceUrl(file));
+    if (file) {
+      img.setAttribute('src', options.host.resourceUrl(file));
+    } else {
+      // Don't let a relative URL resolve against the app's own files.
+      img.removeAttribute('src');
+      img.setAttribute('data-src', src);
+      img.classList.add('is-unresolved');
+    }
   }
 }
 
@@ -207,6 +214,7 @@ async function renderEmbed(embed: HTMLElement, options: RenderOptions): Promise<
 
   const stack = options.embedStack ?? [options.sourcePath];
   embed.classList.add('markdown-embed', 'inline-embed', 'is-loaded');
+  embed.setAttribute('data-embed-path', file.path);
   if (stack.length > MAX_EMBED_DEPTH || stack.includes(file.path + subpath)) {
     embed.createDiv({ cls: 'markdown-embed-content', text: 'Embed depth limit reached.' });
     return;

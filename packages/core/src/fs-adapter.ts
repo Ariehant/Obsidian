@@ -39,9 +39,16 @@ export class FileSystemAdapter implements DataAdapter, WatchableAdapter {
     return this.basePath;
   }
 
+  /** Absolute path of a vault path. Throws for paths that would leave the vault (`..`). */
   getFullPath(normalizedPath: string): string {
     const p = normalizePath(normalizedPath);
-    return p === '/' ? this.basePath : nodePath.join(this.basePath, ...p.split('/'));
+    if (p === '/') return this.basePath;
+    const full = nodePath.join(this.basePath, ...p.split('/'));
+    const rel = nodePath.relative(this.basePath, full);
+    if (rel.startsWith('..') || nodePath.isAbsolute(rel)) {
+      throw new Error(`Path is outside the vault: ${normalizedPath}`);
+    }
+    return full;
   }
 
   getFilePath(normalizedPath: string): string {

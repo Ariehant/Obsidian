@@ -1,10 +1,13 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
-
-const ROOT = path.resolve(__dirname, '../../../..');
-const FIXTURE = path.join(ROOT, 'fixtures/vaults/basic');
+import {
+  editorContent as editorOf,
+  fileTitle as fileOf,
+  folderTitle as folderOf,
+  launch as launchApp,
+  makeVault,
+} from './helpers';
 
 let tmp: string;
 let vaultDir: string;
@@ -12,23 +15,16 @@ let app: ElectronApplication;
 let page: Page;
 
 async function launch(env: Record<string, string> = {}): Promise<void> {
-  app = await electron.launch({
-    args: [path.join(ROOT, 'apps/desktop'), '--no-sandbox'],
-    env: { ...process.env, BASALT_USER_DATA: path.join(tmp, 'user-data'), ...env } as Record<string, string>,
-  });
-  page = await app.firstWindow();
-  page.on('pageerror', (err) => console.error('renderer error:', err));
+  ({ app, page } = await launchApp(tmp, env));
 }
 
-const fileTitle = (p: string) => page.locator(`.nav-file-title[data-path="${p}"]`);
-const folderTitle = (p: string) => page.locator(`.nav-folder-title[data-path="${p}"]`);
-const editorContent = () => page.locator('.markdown-source-view .cm-content');
+const fileTitle = (p: string) => fileOf(page, p);
+const folderTitle = (p: string) => folderOf(page, p);
+const editorContent = () => editorOf(page);
 const readVaultFile = (p: string) => fs.readFile(path.join(vaultDir, p), 'utf8');
 
 test.beforeEach(async () => {
-  tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'basalt-e2e-'));
-  vaultDir = path.join(tmp, 'vault');
-  await fs.cp(FIXTURE, vaultDir, { recursive: true });
+  ({ tmp, vaultDir } = await makeVault());
 });
 
 test.afterEach(async () => {
@@ -47,7 +43,7 @@ test.describe('with a vault open', () => {
     const topLevel = page.locator(
       '.nav-folder.mod-root > .tree-item-children > .tree-item > .tree-item-self',
     );
-    await expect(topLevel).toHaveText(['attachments', 'Daily', 'Projects', 'Welcome']);
+    await expect(topLevel).toHaveText(['attachments', 'Daily', 'Projects', 'Showcase', 'Welcome']);
     await expect(page.locator('[data-path=".obsidian"]')).toHaveCount(0);
 
     await folderTitle('Projects').click();
@@ -130,7 +126,7 @@ test.describe('with a vault open', () => {
         nodeRequire: typeof require === 'function' && typeof require('fs').readFileSync === 'function',
       };
     });
-    expect(result).toEqual({ className: 'probe more', hasVault: true, markdownFiles: 4, nodeRequire: true });
+    expect(result).toEqual({ className: 'probe more', hasVault: true, markdownFiles: 5, nodeRequire: true });
   });
 });
 

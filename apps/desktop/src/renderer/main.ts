@@ -1,5 +1,6 @@
 import '@basalt/ui/styles/tokens.css';
 import '@basalt/ui/styles/app.css';
+import '@basalt/ui/styles/markdown.css';
 import { installDomHelpers } from '@basalt/ui';
 import { ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';

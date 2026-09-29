@@ -1,22 +1,50 @@
-import { Component, joinPath, type TAbstractFile, type TFile, type Vault } from '@basalt/core';
-import { createEditorState, EditorView, type EditorState } from '@basalt/editor';
+import {
+  Component,
+  joinPath,
+  type LinkResolver,
+  type TAbstractFile,
+  type TFile,
+  type Vault,
+} from '@basalt/core';
+import {
+  createEditorState,
+  EditorView,
+  setLivePreview,
+  type EditorHost,
+  type EditorState,
+} from '@basalt/editor';
+import {
+  normalizeHeading,
+  parseSubpath,
+  renderMarkdown,
+  resolveSubpath,
+  type RenderHost,
+} from '@basalt/markdown';
+import { setIcon } from '@basalt/ui';
 
 /** Idle time after the last keystroke before the note is written to disk. */
 export const AUTOSAVE_DELAY_MS = 2000;
 
 const INVALID_NAME_CHARS = /[\\/:]/;
 
+/** `live` and `source` are editing modes; `preview` is the reading view. */
+export type ViewMode = 'live' | 'source' | 'preview';
+
 export interface EditorPaneHandlers {
   /** Called when the open file changes (including to none). */
   onFileChange(file: TFile | null): void;
   /** Called on every document change of the open file. */
   onDocChange(text: string): void;
+  onModeChange(mode: ViewMode): void;
   newNote(): void;
+  /** Follows a link from `sourcePath` (a wikilink target or relative Markdown link). */
+  openLink(linktext: string, sourcePath: string, newLeaf: boolean): void;
 }
 
 /**
- * Single Markdown editor leaf (source mode). Owns autosave: edits are written after
- * AUTOSAVE_DELAY_MS of inactivity, and immediately when switching files or closing.
+ * Single Markdown leaf with Live Preview, source mode and the reading view. Owns
+ * autosave: edits are written after AUTOSAVE_DELAY_MS of inactivity, and immediately when
+ * switching files or closing.
  *
  * Editor states are kept per path for the session, so switching back to a note restores
  * its undo history, selection and scroll position.
@@ -25,27 +53,33 @@ export class EditorPane extends Component {
   readonly containerEl: HTMLElement;
   private readonly breadcrumbEl: HTMLElement;
   private readonly titleEl: HTMLElement;
-  private readonly contentEl: HTMLElement;
+  private readonly modeButton: HTMLElement;
   private readonly sourceEl: HTMLElement;
+  private readonly readingEl: HTMLElement;
+  private readonly sizerEl: HTMLElement;
   private readonly emptyEl: HTMLElement;
   private readonly view: EditorView;
 
   private file: TFile | null = null;
+  private mode: ViewMode = 'live';
+  private lastEditMode: 'live' | 'source' = 'live';
   private readonly states = new Map<string, EditorState>();
   private dirty = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<void> = Promise.resolve();
   private applyingExternal = false;
+  private renderToken = 0;
 
   constructor(
     parentEl: HTMLElement,
     private readonly vault: Vault,
+    private readonly resolver: LinkResolver,
     private readonly handlers: EditorPaneHandlers,
   ) {
     super();
     this.containerEl = parentEl.createDiv({
       cls: 'workspace-leaf-content',
-      attr: { 'data-type': 'markdown' },
+      attr: { 'data-type': 'markdown', 'data-mode': 'source' },
     });
     const header = this.containerEl.createDiv('view-header');
     const titleContainer = header.createDiv('view-header-title-container');
@@ -54,11 +88,18 @@ export class EditorPane extends Component {
       cls: 'view-header-title',
       attr: { contenteditable: 'true', spellcheck: 'false' },
     });
-    this.contentEl = this.containerEl.createDiv('view-content');
-    this.sourceEl = this.contentEl.createDiv('markdown-source-view cm-s-obsidian mod-cm6');
-    this.view = new EditorView({ parent: this.sourceEl, state: this.newState('') });
+    const actions = header.createDiv('view-actions');
+    this.modeButton = actions.createDiv({ cls: 'clickable-icon view-action' });
+    this.modeButton.addEventListener('click', () => this.toggleReading());
 
-    this.emptyEl = this.contentEl.createDiv('empty-state');
+    const contentEl = this.containerEl.createDiv('view-content');
+    this.sourceEl = contentEl.createDiv('markdown-source-view cm-s-obsidian mod-cm6');
+    this.view = new EditorView({ parent: this.sourceEl, state: this.newState('', null) });
+    this.readingEl = contentEl.createDiv('markdown-reading-view');
+    const previewEl = this.readingEl.createDiv('markdown-preview-view markdown-rendered');
+    this.sizerEl = previewEl.createDiv('markdown-preview-sizer markdown-preview-section');
+
+    this.emptyEl = contentEl.createDiv('empty-state');
     const empty = this.emptyEl.createDiv('empty-state-container');
     empty.createDiv({ cls: 'empty-state-title', text: 'No file is open' });
     const action = empty.createDiv({ cls: 'empty-state-action', text: 'Create new note (Ctrl + N)' });
@@ -92,14 +133,15 @@ export class EditorPane extends Component {
     this.registerDomEvent(this.titleEl, 'keydown', (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        this.view.focus();
+        this.focusContent();
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
         this.renderHeader();
-        this.view.focus();
+        this.focusContent();
       }
     });
     this.registerDomEvent(this.titleEl, 'blur', () => void this.commitTitle());
+    this.registerDomEvent(this.readingEl, 'click', (ev) => this.onReadingClick(ev));
     this.register(() => this.view.destroy());
   }
 
@@ -111,13 +153,17 @@ export class EditorPane extends Component {
     return this.view.state.doc.toString();
   }
 
+  getMode(): ViewMode {
+    return this.mode;
+  }
+
   hasUnsavedChanges(): boolean {
     return this.dirty;
   }
 
   async openFile(file: TFile): Promise<void> {
     if (file === this.file) {
-      this.view.focus();
+      this.focusContent();
       return;
     }
     await this.save();
@@ -125,10 +171,62 @@ export class EditorPane extends Component {
 
     const text = await this.vault.read(file);
     const cached = this.states.get(file.path);
-    this.view.setState(cached && cached.doc.toString() === text ? cached : this.newState(text));
+    this.view.setState(cached && cached.doc.toString() === text ? cached : this.newState(text, file));
+    if (this.mode !== 'preview') setLivePreview(this.view, this.mode === 'live');
     this.showFile(file);
+    this.focusContent();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Modes
+
+  setMode(mode: ViewMode): void {
+    if (mode !== 'preview') this.lastEditMode = mode;
+    const changed = mode !== this.mode;
+    this.mode = mode;
+    if (mode !== 'preview') setLivePreview(this.view, mode === 'live');
+    this.applyVisibility();
+    if (mode === 'preview') void this.renderPreview();
+    if (changed) this.handlers.onModeChange(mode);
+  }
+
+  /** Reading view ↔ the last editing mode (Ctrl/Cmd+E). */
+  toggleReading(): void {
+    this.setMode(this.mode === 'preview' ? this.lastEditMode : 'preview');
+    this.focusContent();
+  }
+
+  /** Live Preview ↔ source mode. */
+  toggleSourceMode(): void {
+    this.setMode(this.lastEditMode === 'live' ? 'source' : 'live');
+    this.focusContent();
+  }
+
+  /** Scrolls to `#Heading`, `#A#B` or `#^block` in the open note. */
+  scrollToSubpath(subpath: string): void {
+    const text = this.getText();
+    const range = resolveSubpath(text, subpath);
+    if (!range) return;
+    if (this.mode === 'preview') {
+      const { headings } = parseSubpath(subpath);
+      const wanted = headings.length ? normalizeHeading(headings[headings.length - 1]!) : null;
+      const target = wanted
+        ? Array.from(this.sizerEl.querySelectorAll<HTMLElement>('[data-heading]')).find(
+            (h) => normalizeHeading(h.dataset.heading ?? '') === wanted,
+          )
+        : null;
+      target?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    this.view.dispatch({
+      selection: { anchor: range.from },
+      effects: EditorView.scrollIntoView(range.from, { y: 'start' }),
+    });
     this.view.focus();
   }
+
+  // ---------------------------------------------------------------------------------------
+  // Saving
 
   /** Selects the title so the user can type a name, as after creating a note. */
   focusTitle(): void {
@@ -156,8 +254,105 @@ export class EditorPane extends Component {
     return this.saving;
   }
 
-  private newState(doc: string): EditorState {
-    return createEditorState({ doc, onChange: (text) => this.onDocChanged(text) });
+  // ---------------------------------------------------------------------------------------
+  // Internals
+
+  private renderHost(): RenderHost {
+    return {
+      resolveLink: (linkpath, sourcePath) => this.resolver.getFirstLinkpathDest(linkpath, sourcePath),
+      resourceUrl: (f) => this.vault.getResourcePath(f as TFile),
+      readNote: (f) => this.vault.cachedRead(f as TFile),
+    };
+  }
+
+  /** Link resolution for the editor, bound to the file (whose path follows renames). */
+  private editorHost(file: TFile): EditorHost {
+    const host = this.renderHost();
+    return {
+      resolveLink: (linkpath) => host.resolveLink(linkpath, file.path),
+      resourceUrl: host.resourceUrl,
+      openLink: (linktext, newLeaf) => this.handlers.openLink(linktext, file.path, newLeaf),
+      renderMarkdown: (source, el) => renderMarkdown(source, el, { sourcePath: file.path, host }),
+    };
+  }
+
+  private newState(doc: string, file: TFile | null): EditorState {
+    return createEditorState({
+      doc,
+      onChange: (text) => this.onDocChanged(text),
+      livePreview: this.lastEditMode === 'live',
+      ...(file ? { host: this.editorHost(file) } : {}),
+    });
+  }
+
+  private focusContent(): void {
+    if (!this.file) return;
+    if (this.mode === 'preview') this.readingEl.focus();
+    else this.view.focus();
+  }
+
+  private async renderPreview(): Promise<void> {
+    const file = this.file;
+    const token = ++this.renderToken;
+    if (!file) return;
+    const staging = createDiv();
+    await renderMarkdown(this.getText(), staging, { sourcePath: file.path, host: this.renderHost() });
+    // Drop stale renders (the file or text changed while embeds were loading).
+    if (token !== this.renderToken || file !== this.file) return;
+    const scroll = this.readingEl.scrollTop;
+    this.sizerEl.empty();
+    while (staging.firstChild) this.sizerEl.appendChild(staging.firstChild);
+    this.readingEl.scrollTop = scroll;
+  }
+
+  private onReadingClick(ev: MouseEvent): void {
+    const target = ev.target as HTMLElement;
+    const file = this.file;
+    if (!file) return;
+    const mod = ev.ctrlKey || ev.metaKey;
+
+    const internal = target.closest<HTMLElement>('a.internal-link, .markdown-embed-link');
+    if (internal) {
+      ev.preventDefault();
+      // Links inside an embedded note resolve relative to that note.
+      const embed = internal
+        .closest<HTMLElement>('.markdown-embed-content')
+        ?.closest<HTMLElement>('[data-embed-path]');
+      this.handlers.openLink(internal.dataset.href ?? '', embed?.dataset.embedPath ?? file.path, mod);
+      return;
+    }
+    if (target.closest('a.tag')) {
+      ev.preventDefault(); // Tag search arrives with the search view (Phase 4).
+      return;
+    }
+    const footnote = target.closest<HTMLAnchorElement>('a.footnote-link');
+    if (footnote) {
+      ev.preventDefault();
+      const id = footnote.getAttribute('href')?.slice(1);
+      if (id) this.sizerEl.querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
+      return;
+    }
+    const box = target.closest<HTMLInputElement>('input.task-list-item-checkbox');
+    if (box && !box.closest('.markdown-embed')) {
+      ev.preventDefault();
+      const line = Number(box.closest<HTMLElement>('[data-line]')?.dataset.line);
+      if (Number.isFinite(line)) void this.toggleTask(file, line);
+    }
+  }
+
+  /** Toggles the task on `line` (0-based) between open and done. */
+  private async toggleTask(file: TFile, line: number): Promise<void> {
+    await this.save();
+    await this.vault.process(file, (text) => {
+      const lines = text.split('\n');
+      const current = lines[line];
+      if (current === undefined) return text;
+      lines[line] = current.replace(
+        /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\])/,
+        (_m, a: string, s: string, b: string) => `${a}${s === ' ' ? 'x' : ' '}${b}`,
+      );
+      return lines.join('\n');
+    });
   }
 
   private onDocChanged(text: string): void {
@@ -174,26 +369,32 @@ export class EditorPane extends Component {
   }
 
   /**
-   * Reloads the editor when the open file changed on disk. Unsaved local edits win for now;
-   * a three-way merge comes with file recovery in Phase 5.
+   * Reloads when the open file changed on disk, and refreshes the reading view when any
+   * note changes (it may be embedded). Unsaved local edits win for now; a three-way merge
+   * comes with file recovery in Phase 5.
    */
   private async onExternalModify(f: TAbstractFile): Promise<void> {
-    if (f !== this.file || this.dirty) return;
+    if (f !== this.file) {
+      if (this.mode === 'preview' && this.file) void this.renderPreview();
+      return;
+    }
+    if (this.dirty) return;
     const text = await this.vault.read(this.file);
     if (f !== this.file || this.dirty) return;
     const current = this.getText();
-    if (text === current) return;
-
-    const head = Math.min(this.view.state.selection.main.head, text.length);
-    this.applyingExternal = true;
-    try {
-      this.view.dispatch({
-        changes: { from: 0, to: current.length, insert: text },
-        selection: { anchor: head },
-      });
-    } finally {
-      this.applyingExternal = false;
+    if (text !== current) {
+      const head = Math.min(this.view.state.selection.main.head, text.length);
+      this.applyingExternal = true;
+      try {
+        this.view.dispatch({
+          changes: { from: 0, to: current.length, insert: text },
+          selection: { anchor: head },
+        });
+      } finally {
+        this.applyingExternal = false;
+      }
     }
+    if (this.mode === 'preview') void this.renderPreview();
   }
 
   private async commitTitle(): Promise<void> {
@@ -213,11 +414,28 @@ export class EditorPane extends Component {
     }
   }
 
+  private applyVisibility(): void {
+    const hasFile = !!this.file;
+    const reading = this.mode === 'preview';
+    this.sourceEl.toggle(hasFile && !reading);
+    this.readingEl.toggle(hasFile && reading);
+    this.emptyEl.toggle(!hasFile);
+    this.titleEl.toggle(hasFile);
+    this.modeButton.toggle(hasFile);
+    this.containerEl.setAttr('data-mode', reading ? 'preview' : 'source');
+    setIcon(this.modeButton, reading ? 'pencil' : 'book-open');
+    this.modeButton.setAttr(
+      'aria-label',
+      reading ? 'Current view: reading. Click to edit' : 'Current view: editing. Click to read',
+    );
+  }
+
   private showFile(file: TFile | null): void {
     this.file = file;
-    this.sourceEl.toggle(!!file);
-    this.emptyEl.toggle(!file);
-    this.titleEl.toggle(!!file);
+    this.renderToken++;
+    if (!file) this.sizerEl.empty();
+    this.applyVisibility();
+    if (file && this.mode === 'preview') void this.renderPreview();
     this.renderHeader();
     this.handlers.onFileChange(file);
     this.handlers.onDocChange(file ? this.getText() : '');

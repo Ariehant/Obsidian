@@ -1,9 +1,10 @@
-import { App, Component, FileSystemAdapter, joinPath, Vault, type TFile } from '@basalt/core';
+import { App, Component, FileSystemAdapter, joinPath, LinkResolver, Vault, type TFile } from '@basalt/core';
 import { countWords } from '@basalt/editor';
+import { parseLinktext } from '@basalt/markdown';
 import { setIcon } from '@basalt/ui';
 import { ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
-import { EditorPane } from './editor-pane';
+import { EditorPane, type ViewMode } from './editor-pane';
 import { FileExplorer } from './file-explorer';
 
 const SIDEBAR_MIN = 180;
@@ -17,17 +18,25 @@ function availablePath(vault: Vault, folder: string, base: string, ext: string):
   }
 }
 
+const MODE_LABELS: Record<ViewMode, string> = {
+  live: 'Live Preview',
+  source: 'Source mode',
+  preview: 'Reading',
+};
+
 /**
- * Phase 0 window layout: ribbon, file explorer sidebar, one editor leaf, status bar.
+ * Window layout: ribbon, file explorer sidebar, one editor leaf, status bar.
  * The DOM mirrors the workspace structure themes expect; the real split/tab model
  * replaces this fixed layout in Phase 3.
  */
 export class AppShell extends Component {
   readonly app: App;
+  private resolver!: LinkResolver;
   private explorer!: FileExplorer;
   private editor!: EditorPane;
   private wordCountEl!: HTMLElement;
   private charCountEl!: HTMLElement;
+  private modeEl!: HTMLElement;
 
   constructor(
     private readonly rootEl: HTMLElement,
@@ -46,6 +55,7 @@ export class AppShell extends Component {
 
   override onload(): void {
     document.title = `${this.vault.getName()} - Basalt`;
+    this.resolver = new LinkResolver(this.vault);
     this.buildLayout();
     this.register(() => this.vault.close());
     this.vault.load().catch((err) => console.error('Failed to load vault', err));
@@ -72,7 +82,35 @@ export class AppShell extends Component {
   }
 
   async openFile(file: TFile): Promise<void> {
+    if (file.extension !== 'md') {
+      // Image, PDF and other file views arrive with the workspace (Phase 3).
+      await ipcRenderer.invoke(IPC.openPath, this.adapter.getFullPath(file.path));
+      return;
+    }
     await this.editor.openFile(file);
+  }
+
+  /**
+   * Follows a link. An unresolved link creates the note, as clicking one does in the
+   * reading view and Live Preview.
+   */
+  async openLinkText(linktext: string, sourcePath: string): Promise<void> {
+    const { path, subpath } = parseLinktext(linktext);
+    let file = path
+      ? this.resolver.getFirstLinkpathDest(path, sourcePath)
+      : this.vault.getFileByPath(sourcePath);
+    if (!file && path) {
+      if (path.split('/').some((seg) => seg === '..')) return;
+      const target = /\.[^/.]+$/.test(path) ? path : `${path}.md`;
+      file = await this.vault.create(target, '');
+    }
+    if (!file) return;
+    await this.openFile(file);
+    if (subpath && file.extension === 'md') this.editor.scrollToSubpath(subpath);
+  }
+
+  private get adapter(): FileSystemAdapter {
+    return this.vault.adapter as FileSystemAdapter;
   }
 
   private buildLayout(): void {
@@ -102,14 +140,25 @@ export class AppShell extends Component {
       }),
     );
     this.editor = this.addChild(
-      new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.vault, {
+      new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.vault, this.resolver, {
         onFileChange: (file) => this.explorer?.setActiveFile(file),
         onDocChange: (text) => this.updateWordCount(text),
+        onModeChange: (mode) => this.modeEl?.setText(MODE_LABELS[mode]),
         newNote: () => void this.createNote(),
+        openLink: (linktext, sourcePath) =>
+          void this.openLinkText(linktext, sourcePath).catch((err) =>
+            console.error('Failed to open link', err),
+          ),
       }),
     );
 
     const statusBar = container.createDiv('status-bar');
+    this.modeEl = statusBar.createDiv({
+      cls: 'status-bar-item mod-clickable plugin-editor-status',
+      text: MODE_LABELS[this.editor.getMode()],
+      attr: { 'aria-label': 'Toggle Live Preview/Source mode' },
+    });
+    this.modeEl.addEventListener('click', () => this.editor.toggleSourceMode());
     const counts = statusBar.createDiv('status-bar-item plugin-word-count');
     this.wordCountEl = counts.createSpan('status-bar-item-segment');
     this.charCountEl = counts.createSpan('status-bar-item-segment');
@@ -168,6 +217,9 @@ export class AppShell extends Component {
     } else if (key === 's') {
       ev.preventDefault();
       void this.editor.save();
+    } else if (key === 'e' && !ev.shiftKey) {
+      ev.preventDefault();
+      this.editor.toggleReading();
     }
   }
 

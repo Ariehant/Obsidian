@@ -11,6 +11,7 @@
     "@lezer/markdown": "^1.7.2",
     "dompurify": "^3.4.16",
     "entities": "^8.1.0",
-    "mathjax-full": "^3.2.1"
+    "mathjax-full": "^3.2.1",
+    "@basalt/ui": "*"
   }
 }

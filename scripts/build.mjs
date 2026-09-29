@@ -1,7 +1,7 @@
 // Builds the desktop app into apps/desktop/dist: main process, renderer bundle + CSS, HTML.
 // Usage: node scripts/build.mjs [--watch] [--production]
 import * as esbuild from 'esbuild';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
 
 const watch = process.argv.includes('--watch');
 const production = process.argv.includes('--production');
@@ -30,8 +30,12 @@ const main = {
 // The renderer runs with Node integration, so it is built for Node: builtins and electron
 // stay as runtime `require` calls. It loads as a classic <script>, so it must be an IIFE;
 // otherwise top-level bindings leak into (and can collide with) window globals.
+const mathjaxVersion = JSON.parse(await readFile('node_modules/mathjax-full/package.json', 'utf8')).version;
+
 const renderer = {
   ...common,
+  // MathJax otherwise reads its version with eval("require"), which the CSP forbids.
+  define: { PACKAGE_VERSION: JSON.stringify(mathjaxVersion) },
   entryPoints: { renderer: 'apps/desktop/src/renderer/main.ts' },
   outdir,
   platform: 'node',

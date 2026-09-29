@@ -150,6 +150,12 @@ describe('Vault mutations', () => {
     expect(events).toEqual(['delete a.md']);
   });
 
+  it('refuses paths that leave the vault', async () => {
+    await expect(vault.create('../outside.md', 'x')).rejects.toThrow('outside the vault');
+    await expect(vault.create('a/../../outside.md', 'x')).rejects.toThrow('outside the vault');
+    await expect(fs.stat(path.join(dir, '..', 'outside.md'))).rejects.toThrow();
+  });
+
   it('copies files', async () => {
     const copy = await vault.copy(vault.getFileByPath('a.md')!, 'b.md');
     expect(copy.path).toBe('b.md');

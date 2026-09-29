@@ -95,6 +95,14 @@ describe('renderMarkdown', () => {
     expect(mdImg!.getAttribute('src')).toBe('app://local/vault/attachments/diagram.png');
   });
 
+  it('drops the src of relative images that do not resolve', async () => {
+    const el = await render('![x](missing/pic.png) ![y](https://example.com/y.png)');
+    const [local, remote] = Array.from(el.querySelectorAll('img'));
+    expect(local!.hasAttribute('src')).toBe(false);
+    expect(local!.getAttribute('data-src')).toBe('missing/pic.png');
+    expect(remote!.getAttribute('src')).toBe('https://example.com/y.png');
+  });
+
   it('embeds video and reports missing files', async () => {
     const el = await render('![[clip.mp4]]\n\n![[Nowhere]]');
     expect(el.querySelector('video')?.getAttribute('src')).toBe('app://local/vault/clip.mp4');

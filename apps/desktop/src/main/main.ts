@@ -43,6 +43,32 @@ function registerAppProtocol(): void {
   });
 }
 
+/** File types `openPath` may hand to the OS. Anything else could be an executable. */
+const OPENABLE = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'bmp',
+  'svg',
+  'webp',
+  'avif',
+  'pdf',
+  'mp3',
+  'wav',
+  'm4a',
+  'ogg',
+  'flac',
+  'webm',
+  'mp4',
+  'mov',
+  'mkv',
+  'ogv',
+  'txt',
+  'csv',
+  'json',
+]);
+
 function registerIpc(): void {
   ipcMain.handle(IPC.vaultCurrent, () => registry.current());
 
@@ -71,6 +97,17 @@ function registerIpc(): void {
   ipcMain.handle(IPC.vaultClose, (event) => {
     registry.closeCurrent();
     event.sender.reload();
+  });
+
+  ipcMain.handle(IPC.openPath, async (_event, fullPath: unknown) => {
+    const vault = registry.current();
+    if (typeof fullPath !== 'string' || !vault || !isInside(path.resolve(fullPath), vault)) {
+      throw new Error('Refusing to open a path outside the vault.');
+    }
+    const ext = path.extname(fullPath).slice(1).toLowerCase();
+    if (!OPENABLE.has(ext)) throw new Error(`Refusing to open .${ext} files with the system.`);
+    const error = await shell.openPath(fullPath);
+    if (error) throw new Error(error);
   });
 
   ipcMain.handle(IPC.trashItem, async (_event, fullPath: unknown) => {

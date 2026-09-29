@@ -387,22 +387,6 @@ button.mod-cta:hover {
   font-weight: var(--font-bold);
   color: var(--text-normal);
 }
-.cm-header-1 {
-  font-size: 1.8em;
-}
-.cm-header-2 {
-  font-size: 1.5em;
-}
-.cm-header-3 {
-  font-size: 1.3em;
-}
-.cm-header-4 {
-  font-size: 1.15em;
-}
-.cm-header-5,
-.cm-header-6 {
-  font-size: 1em;
-}
 .cm-strong {
   font-weight: var(--font-bold);
 }
@@ -413,36 +397,31 @@ button.mod-cta:hover {
   text-decoration: line-through;
 }
 .cm-formatting,
-.cm-hmd-frontmatter,
 .cm-comment {
   color: var(--text-faint);
 }
-.cm-link,
-.cm-hmd-internal-link {
-  color: var(--text-accent);
-}
 .cm-url {
   color: var(--text-faint);
-  text-decoration: underline;
 }
 .cm-quote {
   color: var(--text-muted);
 }
-.cm-inline-code,
-.cm-hmd-codeblock {
+.cm-inline-code {
   font-family: var(--font-monospace);
   font-size: 0.9em;
-}
-.cm-inline-code {
   background-color: var(--background-primary-alt);
   border-radius: var(--radius-s);
 }
-.cm-hashtag {
-  color: var(--text-accent);
+
+.view-actions {
+  display: flex;
+  gap: var(--size-2-2);
 }
-.cm-list-1,
-.cm-list-2,
-.cm-list-3 {
+
+.status-bar-item.mod-clickable {
+  cursor: pointer;
+}
+.status-bar-item.mod-clickable:hover {
   color: var(--text-normal);
 }
 

@@ -12,6 +12,8 @@ export const IPC = {
   vaultClose: 'vault:close',
   /** (fullPath) => void — moves a file to the OS trash. */
   trashItem: 'shell:trash-item',
+  /** (fullPath) => void — opens a vault file with the system's default app. */
+  openPath: 'shell:open-path',
 } as const;
 
 export interface VaultInfo {

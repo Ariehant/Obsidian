@@ -1,44 +1,43 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { commonmarkLanguage, markdown } from '@codemirror/lang-markdown';
+import { indentUnit } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
-import { EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { drawSelection, dropCursor, EditorView, keymap, rectangularSelection } from '@codemirror/view';
-import { tags as t } from '@lezer/highlight';
+import { obsidianExtensions } from '@basalt/markdown';
+import { editorHost, linkClickHandler, livePreview, type EditorHost } from './live-preview';
+import { markdownTokens } from './tokens';
 
 export { EditorState, EditorView };
-
-/**
- * Maps Lezer highlight tags to the token classes themes style (`cm-header-1`, `cm-strong`,
- * `cm-formatting`, …). Emitting classes instead of inline styles keeps all colours in CSS.
- */
-export const markdownHighlightStyle = HighlightStyle.define([
-  { tag: t.heading1, class: 'cm-header cm-header-1' },
-  { tag: t.heading2, class: 'cm-header cm-header-2' },
-  { tag: t.heading3, class: 'cm-header cm-header-3' },
-  { tag: t.heading4, class: 'cm-header cm-header-4' },
-  { tag: t.heading5, class: 'cm-header cm-header-5' },
-  { tag: t.heading6, class: 'cm-header cm-header-6' },
-  { tag: t.strong, class: 'cm-strong' },
-  { tag: t.emphasis, class: 'cm-em' },
-  { tag: t.strikethrough, class: 'cm-strikethrough' },
-  { tag: t.link, class: 'cm-link' },
-  { tag: t.url, class: 'cm-url' },
-  { tag: t.quote, class: 'cm-quote' },
-  { tag: t.monospace, class: 'cm-inline-code' },
-  { tag: t.list, class: 'cm-list-1' },
-  { tag: [t.processingInstruction, t.contentSeparator], class: 'cm-formatting' },
-  { tag: [t.meta, t.comment], class: 'cm-comment' },
-]);
+export { editorHost, livePreview, type EditorHost } from './live-preview';
+export { markdownTokens } from './tokens';
 
 export interface EditorStateOptions {
   doc: string;
   /** Called after every document change with the full text. */
   onChange?: (doc: string) => void;
+  /** Link resolution and rendering for the note being edited. */
+  host?: EditorHost;
+  /** Live Preview (default) or source mode. */
+  livePreview?: boolean;
   extensions?: Extension[];
 }
 
-/** Base extension set for the Markdown source editor. */
+/** Holds the mode-specific extensions so the mode can switch without losing state. */
+const modeCompartment = new Compartment();
+
+function modeExtensions(live: boolean): Extension {
+  return live
+    ? livePreview()
+    : [linkClickHandler(true), EditorView.editorAttributes.of({ class: 'is-source-mode' })];
+}
+
+/** Obsidian-flavoured Markdown for CodeMirror: the same grammar the renderer uses. */
+export function obsidianMarkdown(): Extension {
+  return markdown({ base: commonmarkLanguage, extensions: obsidianExtensions, addKeymap: true });
+}
+
+/** Base extension set for the Markdown editor. */
 export function markdownEditorExtensions(onChange?: (doc: string) => void): Extension[] {
   return [
     history(),
@@ -50,8 +49,8 @@ export function markdownEditorExtensions(onChange?: (doc: string) => void): Exte
     EditorState.tabSize.of(4),
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ spellcheck: 'true', autocorrect: 'on', autocapitalize: 'on' }),
-    markdown({ base: markdownLanguage, addKeymap: true }),
-    syntaxHighlighting(markdownHighlightStyle),
+    obsidianMarkdown(),
+    markdownTokens,
     search({ top: true }),
     highlightSelectionMatches(),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
@@ -64,8 +63,24 @@ export function markdownEditorExtensions(onChange?: (doc: string) => void): Exte
 export function createEditorState(options: EditorStateOptions): EditorState {
   return EditorState.create({
     doc: options.doc,
-    extensions: [markdownEditorExtensions(options.onChange), options.extensions ?? []],
+    extensions: [
+      markdownEditorExtensions(options.onChange),
+      options.host ? editorHost.of(options.host) : [],
+      modeCompartment.of(modeExtensions(options.livePreview ?? true)),
+      options.extensions ?? [],
+    ],
   });
+}
+
+/** Switches between Live Preview and source mode, keeping document, history and selection. */
+export function setLivePreview(view: EditorView, live: boolean): void {
+  view.dispatch({ effects: modeCompartment.reconfigure(modeExtensions(live)) });
+}
+
+export function isLivePreview(state: EditorState): boolean {
+  return state
+    .facet(EditorView.editorAttributes)
+    .some((a) => typeof a === 'object' && a?.class === 'is-live-preview');
 }
 
 /**
