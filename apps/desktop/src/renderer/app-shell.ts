@@ -1,9 +1,20 @@
-import { App, Component, FileSystemAdapter, joinPath, LinkResolver, Vault, type TFile } from '@basalt/core';
+import {
+  App,
+  Component,
+  FileSystemAdapter,
+  joinPath,
+  LinkResolver,
+  TFolder,
+  Vault,
+  type TAbstractFile,
+  type TFile,
+} from '@basalt/core';
 import { countWords } from '@basalt/editor';
 import { parseLinktext } from '@basalt/markdown';
-import { setIcon } from '@basalt/ui';
-import { ipcRenderer } from 'electron';
+import { Notice, setIcon } from '@basalt/ui';
+import { clipboard, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
+import { confirm } from './confirm-modal';
 import { EditorPane, type ViewMode } from './editor-pane';
 import { FileExplorer } from './file-explorer';
 
@@ -60,7 +71,9 @@ export class AppShell extends Component {
     this.register(() => this.vault.close());
     this.vault.load().catch((err) => console.error('Failed to load vault', err));
 
-    this.registerDomEvent(document, 'keydown', (ev) => this.onKeyDown(ev));
+    this.registerShortcuts();
+    this.app.keymap.attach(window);
+    this.register(() => this.app.keymap.dispose());
     this.registerDomEvent(window, 'beforeunload', (ev) => {
       // Closing with unsaved edits: cancel, flush to disk, then close for real.
       if (!this.editor.hasUnsavedChanges()) return;
@@ -70,15 +83,48 @@ export class AppShell extends Component {
     });
   }
 
-  async createNote(): Promise<void> {
-    const file = await this.vault.create(availablePath(this.vault, '/', 'Untitled', '.md'), '');
+  async createNote(folder: TFolder = this.vault.getRoot()): Promise<void> {
+    const file = await this.vault.create(availablePath(this.vault, folder.path, 'Untitled', '.md'), '');
     await this.openFile(file);
     this.editor.focusTitle();
   }
 
-  async createFolder(): Promise<void> {
-    const folder = await this.vault.createFolder(availablePath(this.vault, '/', 'Untitled', ''));
-    this.explorer.startRename(folder.path);
+  async createFolder(parent: TFolder = this.vault.getRoot()): Promise<void> {
+    const folder = await this.vault.createFolder(availablePath(this.vault, parent.path, 'Untitled', ''));
+    this.explorer.startRename(folder);
+  }
+
+  async deleteFile(file: TAbstractFile): Promise<void> {
+    const isFolder = file instanceof TFolder;
+    const ok = await confirm(this.app, {
+      title: isFolder ? 'Delete folder' : 'Delete file',
+      message: isFolder
+        ? `Are you sure you want to delete "${file.name}" and everything in it? It will be moved to your system trash.`
+        : `Are you sure you want to delete "${file.name}"? It will be moved to your system trash.`,
+      confirmText: 'Delete',
+      warning: true,
+    });
+    if (!ok) return;
+    if (
+      this.editor.getFile() === file ||
+      (isFolder && this.editor.getFile()?.path.startsWith(file.path + '/'))
+    ) {
+      await this.editor.save();
+    }
+    try {
+      await this.vault.trash(file, true);
+    } catch (err) {
+      new Notice(`Could not delete "${file.name}": ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async duplicate(file: TFile): Promise<void> {
+    const ext = file.extension ? `.${file.extension}` : '';
+    const copy = await this.vault.copy(
+      file,
+      availablePath(this.vault, file.parent?.path ?? '/', file.basename, ext),
+    );
+    if (copy.extension === 'md') await this.openFile(copy);
   }
 
   async openFile(file: TFile): Promise<void> {
@@ -135,8 +181,16 @@ export class AppShell extends Component {
     this.explorer = this.addChild(
       new FileExplorer(leftSplit.createDiv('workspace-leaf'), this.vault, {
         openFile: (file) => void this.openFile(file),
-        newNote: () => void this.createNote(),
-        newFolder: () => void this.createFolder(),
+        newNote: (folder) => void this.createNote(folder),
+        newFolder: (folder) => void this.createFolder(folder),
+        deleteFile: (file) => void this.deleteFile(file),
+        duplicate: (file) => void this.duplicate(file),
+        revealInSystem: (file) =>
+          void ipcRenderer.invoke(IPC.showItemInFolder, this.adapter.getFullPath(file.path)),
+        copyPath: (file) => {
+          clipboard.writeText(file.path);
+          new Notice('Path copied to clipboard', 2000);
+        },
       }),
     );
     this.editor = this.addChild(
@@ -203,24 +257,25 @@ export class AppShell extends Component {
     this.wordCountEl.closest<HTMLElement>('.status-bar')?.toggle(!!file);
   }
 
-  /** Phase 0 hard-coded shortcuts; the command/hotkey system replaces these in Phase 4. */
-  private onKeyDown(ev: KeyboardEvent): void {
-    const mod = process.platform === 'darwin' ? ev.metaKey : ev.ctrlKey;
-    if (!mod || ev.altKey) return;
-    const key = ev.key.toLowerCase();
-    if (key === 'n' && !ev.shiftKey) {
-      ev.preventDefault();
+  /** App-wide shortcuts on the root scope; the command/hotkey system takes these over in Phase 4. */
+  private registerShortcuts(): void {
+    const scope = this.app.scope;
+    scope.register(['Mod'], 'n', () => {
       void this.createNote();
-    } else if (key === 'n' && ev.shiftKey) {
-      ev.preventDefault();
+      return false;
+    });
+    scope.register(['Mod', 'Shift'], 'n', () => {
       void this.createFolder();
-    } else if (key === 's') {
-      ev.preventDefault();
+      return false;
+    });
+    scope.register(['Mod'], 's', () => {
       void this.editor.save();
-    } else if (key === 'e' && !ev.shiftKey) {
-      ev.preventDefault();
+      return false;
+    });
+    scope.register(['Mod'], 'e', () => {
       this.editor.toggleReading();
-    }
+      return false;
+    });
   }
 
   private async closeVault(): Promise<void> {

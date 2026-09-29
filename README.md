@@ -8,8 +8,9 @@ A clean-room Markdown knowledge base that works with Obsidian vaults, plugins an
 
 ## Status
 
-Phase 0 is done. You can open a folder as a vault, browse it, and edit notes in a
-CodeMirror 6 source editor with autosave. See [PLAN §9](docs/PLAN.md#9-status).
+Phases 0 and 1 are done: open a folder as a vault, browse and manage it (context menu,
+drag-and-drop), and write in Live Preview, source mode or the reading view, with callouts,
+tables, math, embeds and link navigation. See [PLAN §9](docs/PLAN.md#9-status).
 
 ## Development
 
@@ -38,8 +39,10 @@ Useful overrides:
 ```
 apps/desktop/      Electron main process, renderer shell (explorer, editor pane), E2E tests
 packages/core/     App, Vault, file model, adapters, Events, Component (no DOM)
-packages/ui/       Global DOM helpers, icons, CSS tokens and app styles
-packages/editor/   CodeMirror 6 setup for Markdown
+packages/ui/       Global DOM helpers, icons, Menu/Modal/Notice, CSS tokens and styles
+packages/editor/   CodeMirror 6: OFM grammar, theme token classes, Live Preview
+packages/markdown/ OFM grammar, HTML renderer, sanitised DOM rendering, embeds, math
+fixtures/markdown/ Golden OFM fixtures (<name>.md → <name>.html)
 fixtures/vaults/   Test vaults
 scripts/build.mjs  esbuild build for the desktop app
 ```

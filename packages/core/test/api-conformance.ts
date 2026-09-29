@@ -12,7 +12,18 @@
  * Add a line here whenever another API class is implemented.
  */
 import type * as Api from 'obsidian';
-import type { Component, DataAdapter, Events, FileSystemAdapter, TFile, TFolder, Vault } from '../src';
+import type { Menu, MenuItem, Modal, Notice } from '@basalt/ui';
+import type {
+  Component,
+  DataAdapter,
+  Events,
+  FileSystemAdapter,
+  Keymap,
+  Scope,
+  TFile,
+  TFolder,
+  Vault,
+} from '../src';
 
 /** API member names our type doesn't have. Must resolve to `never`. */
 type MissingMembers<Ours, Theirs> = Exclude<keyof Theirs, keyof Ours>;
@@ -35,4 +46,12 @@ export type Coverage = [
   AssertNever<MissingMembers<typeof import('../src').Vault, typeof Api.Vault>>,
   AssertNever<MissingMembers<TFile, Api.TFile>>,
   AssertNever<MissingMembers<TFolder, Api.TFolder>>,
+  AssertNever<MissingMembers<Scope, Api.Scope>>,
+  AssertNever<MissingMembers<Keymap, Api.Keymap>>,
+  AssertNever<MissingMembers<typeof import('../src').Keymap, typeof Api.Keymap>>,
+  AssertNever<MissingMembers<Menu, Api.Menu>>,
+  AssertNever<MissingMembers<typeof import('@basalt/ui').Menu, typeof Api.Menu>>,
+  AssertNever<MissingMembers<MenuItem, Api.MenuItem>>,
+  AssertNever<MissingMembers<Notice, Api.Notice>>,
+  AssertNever<MissingMembers<Modal, Api.Modal>>,
 ];

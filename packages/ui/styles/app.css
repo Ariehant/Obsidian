@@ -547,3 +547,180 @@ button.mod-cta:hover {
   color: var(--text-error);
   font-size: var(--font-ui-small);
 }
+
+/* ---- Menus ------------------------------------------------------------------------------ */
+
+.menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 180px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: var(--size-2-3);
+  border-radius: var(--radius-m);
+  border: var(--border-width) solid var(--background-modifier-border-hover);
+  background-color: var(--background-secondary);
+  box-shadow: var(--shadow-l);
+  font-size: var(--font-ui-small);
+  outline: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-2-3) var(--size-4-2);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  color: var(--text-normal);
+}
+
+.menu-item.selected:not(.is-disabled):not(.is-label),
+.menu-item:hover:not(.is-disabled):not(.is-label) {
+  background-color: var(--background-modifier-hover);
+}
+
+.menu-item-icon {
+  display: flex;
+  color: var(--text-muted);
+  --icon-size: var(--icon-s);
+}
+
+.menu-item-icon:empty {
+  width: var(--icon-s);
+}
+
+.menu-item.is-warning,
+.menu-item.is-warning .menu-item-icon {
+  color: var(--text-error);
+}
+
+.menu-item.is-disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.menu-item.is-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: default;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: var(--size-2-2) calc(var(--size-2-3) * -1);
+  background-color: var(--background-modifier-border);
+}
+
+/* ---- Modals ----------------------------------------------------------------------------- */
+
+.modal-container {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-bg {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.modal {
+  position: relative;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: var(--size-4-6);
+  border-radius: var(--radius-l);
+  background-color: var(--background-primary);
+  border: var(--border-width) solid var(--background-modifier-border);
+  box-shadow: var(--shadow-l);
+  outline: none;
+  user-select: text;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: var(--size-4-3);
+  right: var(--size-4-3);
+  display: flex;
+  padding: var(--size-2-2);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-close-button:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.modal-title {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--size-4-3);
+  padding-right: var(--size-4-8);
+}
+
+.modal-content {
+  color: var(--text-muted);
+  line-height: var(--line-height-normal);
+}
+
+.modal-button-container {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-6);
+}
+
+button.mod-warning {
+  color: var(--text-on-accent);
+  background-color: var(--background-modifier-error);
+  border-color: transparent;
+}
+
+/* ---- Notices ---------------------------------------------------------------------------- */
+
+.notice-container {
+  position: fixed;
+  top: var(--size-4-8);
+  right: var(--size-4-4);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--size-4-2);
+}
+
+.notice {
+  max-width: 360px;
+  padding: var(--size-4-3) var(--size-4-4);
+  border-radius: var(--radius-m);
+  background-color: var(--background-secondary-alt);
+  border: var(--border-width) solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+/* ---- Explorer states -------------------------------------------------------------------- */
+
+.tree-item-self.has-focus {
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.tree-item-self.is-being-dragged {
+  opacity: 0.5;
+}
+
+.nav-folder.is-being-dragged-over > .tree-item-self,
+.nav-folder.is-being-dragged-over > .tree-item-children,
+.nav-files-container.is-being-dragged-over {
+  background-color: hsla(var(--color-accent-hsl), 0.1);
+  border-radius: var(--radius-s);
+}

@@ -288,10 +288,42 @@ We'll keep a benchmark vault generator in `fixtures/` and run perf tests in CI.
 Moved to Phase 1: the Markdown fixture corpus and golden-test harness. They belong with the
 parser, which is where Phase 1 starts.
 
-### Phase 1: next
+### Phase 1: done
 
-1. Obsidian Markdown parser (Lezer extensions for the editor, renderer for reading view),
-   with the fixture corpus and golden DOM tests.
-2. Live Preview.
-3. File explorer context menu (rename, delete, reveal), `Menu`, `Notice` and `Modal` API classes.
-4. Incremental explorer updates, drag-and-drop moves.
+- `packages/markdown`: one Lezer grammar for Obsidian-flavoured Markdown (wikilinks,
+  embeds, highlights, comments, tags, block ids, math, footnotes, frontmatter, tasks with any
+  status), shared by the editor and the renderer ([ADR 0004](adr/0004-one-grammar-sanitised-rendering.md)).
+- HTML renderer with a CommonMark flavour graded against the official spec: **637/652**
+  examples pass; the 15 remaining are parser-level and documented in the test.
+- Golden fixtures for every OFM feature (`fixtures/markdown`), reviewed by hand.
+- Reading view (Ctrl/Cmd+E): callouts with folding, tables, footnotes, MathJax, image,
+  audio, video, PDF and note embeds with heading/block subpaths, sanitised through DOMPurify
+  with a fail-closed self-check.
+- Live Preview: syntax hides away from the cursor; bullets, checkboxes, rules, images,
+  embeds and math render in place; tables, callouts and math blocks render as blocks until
+  the cursor enters. Source mode keeps the same token classes. Mode toggle in the status bar.
+- Link navigation: `LinkResolver` with `getFirstLinkpathDest` semantics; following an
+  unresolved link creates the note; heading subpaths scroll.
+- `Menu`, `Notice`, `Modal`, `Scope`, `Keymap` (plugin API); explorer context menu, delete
+  confirmation, make a copy, copy path, reveal in system explorer, drag-and-drop moves,
+  incremental tree updates.
+- Hardening: vault paths can't escape the vault root; `openPath` only opens document/media
+  types; unresolved relative images never load from the app folder; the CSP stays free of
+  `unsafe-eval`.
+
+Deferred from Phase 1, with the phase that picks them up:
+
+- code-block syntax highlighting in both views, Mermaid diagrams (Phase 5, with other
+  renderers);
+- image/PDF/audio file views and opening links in new tabs (Phase 3, workspace);
+- properties UI for frontmatter (Phase 2);
+- dropping OS files into the explorer, and attachment paste (Phase 2, with the
+  attachment-folder setting).
+
+### Phase 2: next
+
+1. `MetadataCache` in a worker: headings, links, embeds, tags, blocks, sections,
+   frontmatter per file; resolved/unresolved link maps; persisted for fast startup.
+2. Rename → rewrite links; backlinks, outgoing links, outline and tags panes.
+3. Link, heading and tag autocomplete; hover previews.
+4. Properties editor and attachments (paste/drop into the vault).

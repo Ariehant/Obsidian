@@ -110,6 +110,14 @@ function registerIpc(): void {
     if (error) throw new Error(error);
   });
 
+  ipcMain.handle(IPC.showItemInFolder, (_event, fullPath: unknown) => {
+    const vault = registry.current();
+    if (typeof fullPath !== 'string' || !vault || !isInside(path.resolve(fullPath), vault)) {
+      throw new Error('Refusing to reveal a path outside the vault.');
+    }
+    shell.showItemInFolder(fullPath);
+  });
+
   ipcMain.handle(IPC.trashItem, async (_event, fullPath: unknown) => {
     const vault = registry.current();
     if (typeof fullPath !== 'string' || !vault || !isInside(path.resolve(fullPath), vault)) {
