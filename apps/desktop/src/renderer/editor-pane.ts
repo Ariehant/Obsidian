@@ -13,13 +13,7 @@ import {
   type EditorHost,
   type EditorState,
 } from '@basalt/editor';
-import {
-  normalizeHeading,
-  parseSubpath,
-  renderMarkdown,
-  resolveSubpath,
-  type RenderHost,
-} from '@basalt/markdown';
+import { renderMarkdown, resolveSubpath, type RenderHost } from '@basalt/markdown';
 import { setIcon } from '@basalt/ui';
 
 /** Idle time after the last keystroke before the note is written to disk. */
@@ -206,24 +200,30 @@ export class EditorPane extends Component {
 
   /** Scrolls to `#Heading`, `#A#B` or `#^block` in the open note. */
   scrollToSubpath(subpath: string): void {
-    const text = this.getText();
-    const range = resolveSubpath(text, subpath);
-    if (!range) return;
+    const range = resolveSubpath(this.getText(), subpath);
+    if (range) this.scrollToOffset(range.from);
+  }
+
+  /**
+   * Scrolls to a document offset: moves the cursor there when editing; in the reading view,
+   * scrolls to the rendered section containing that line.
+   */
+  scrollToOffset(offset: number, end = offset): void {
+    const pos = Math.min(offset, this.view.state.doc.length);
+    this.view.dispatch({
+      selection: { anchor: pos, head: Math.min(end, this.view.state.doc.length) },
+      effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+    });
     if (this.mode === 'preview') {
-      const { headings } = parseSubpath(subpath);
-      const wanted = headings.length ? normalizeHeading(headings[headings.length - 1]!) : null;
-      const target = wanted
-        ? Array.from(this.sizerEl.querySelectorAll<HTMLElement>('[data-heading]')).find(
-            (h) => normalizeHeading(h.dataset.heading ?? '') === wanted,
-          )
-        : null;
+      const line = this.view.state.doc.lineAt(pos).number - 1;
+      let target: HTMLElement | null = null;
+      for (const el of Array.from(this.sizerEl.querySelectorAll<HTMLElement>(':scope > [data-line]'))) {
+        if (Number(el.dataset.line) <= line) target = el;
+        else break;
+      }
       target?.scrollIntoView({ block: 'start' });
       return;
     }
-    this.view.dispatch({
-      selection: { anchor: range.from },
-      effects: EditorView.scrollIntoView(range.from, { y: 'start' }),
-    });
     this.view.focus();
   }
 

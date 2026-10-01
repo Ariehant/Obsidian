@@ -124,7 +124,9 @@ class Renderer {
     for (let child = top.firstChild; child; child = child.nextSibling) {
       const html = this.block(child);
       if (!html) continue;
-      out += this.options.sections ? `<div class="el-${sectionTag(child, html)}">${html}</div>\n` : html;
+      out += this.options.sections
+        ? `<div class="el-${sectionTag(child, html)}" data-line="${this.lineNumber(child.from)}">${html}</div>\n`
+        : html;
     }
     return out + this.footnotesSection();
   }
@@ -348,10 +350,24 @@ class Renderer {
     return { html: `<li${attrs}>${body}</li>\n`, task };
   }
 
+  private lineStarts: number[] | null = null;
+
+  /** 0-based line of an offset (binary search over precomputed line starts). */
   private lineNumber(pos: number): number {
-    let n = 0;
-    for (let i = this.src.indexOf('\n'); i !== -1 && i < pos; i = this.src.indexOf('\n', i + 1)) n++;
-    return n;
+    if (!this.lineStarts) {
+      this.lineStarts = [0];
+      for (let i = this.src.indexOf('\n'); i !== -1; i = this.src.indexOf('\n', i + 1))
+        this.lineStarts.push(i + 1);
+    }
+    const starts = this.lineStarts;
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid]! <= pos) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
   }
 
   private lineStartOf(pos: number): number {

@@ -13,6 +13,25 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const LUCIDE_PREFIX = 'lucide-';
 const custom = new Map<string, string>();
 
+/**
+ * Icon ids specific to Obsidian that plugins pass to `setIcon`, mapped to Lucide icons with
+ * the same meaning (we don't ship Obsidian's own artwork).
+ */
+const ALIASES: Record<string, string> = {
+  'links-coming-in': 'log-in',
+  'links-going-out': 'log-out',
+  'right-triangle': 'chevron-right',
+  document: 'file',
+  documents: 'files',
+  install: 'download',
+  'sheets-in-box': 'archive',
+  'stacked-levels': 'layers',
+  switch: 'toggle-right',
+  reset: 'rotate-ccw',
+  'popup-open': 'external-link',
+  'pane-layout': 'layout-dashboard',
+};
+
 function pascalCase(kebab: string): string {
   return kebab
     .split('-')
@@ -29,7 +48,8 @@ function kebabCase(pascal: string): string {
 }
 
 function lucideNode(iconId: string): IconNode | null {
-  const name = iconId.startsWith(LUCIDE_PREFIX) ? iconId.slice(LUCIDE_PREFIX.length) : iconId;
+  const id = ALIASES[iconId] ?? iconId;
+  const name = id.startsWith(LUCIDE_PREFIX) ? id.slice(LUCIDE_PREFIX.length) : id;
   const node = (lucideIcons as Record<string, IconNode | undefined>)[pascalCase(name)];
   return node ?? null;
 }
@@ -88,6 +108,7 @@ export function setIcon(parent: HTMLElement, iconId: string): void {
 export function getIconIds(): string[] {
   const ids = new Set<string>();
   for (const key of Object.keys(lucideIcons)) ids.add(LUCIDE_PREFIX + kebabCase(key));
+  for (const key of Object.keys(ALIASES)) ids.add(key);
   for (const key of custom.keys()) ids.add(key);
   return [...ids];
 }

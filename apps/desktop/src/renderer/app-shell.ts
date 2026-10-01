@@ -18,6 +18,7 @@ import { lazyMetadataStore } from './idb-store';
 import { WorkerParser } from './worker-parser';
 import { EditorPane, type ViewMode } from './editor-pane';
 import { FileExplorer } from './file-explorer';
+import { RightSidebar } from './sidebar/right-sidebar';
 
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 600;
@@ -47,6 +48,7 @@ export class AppShell extends Component {
   private readonly store: ReturnType<typeof lazyMetadataStore>;
   private explorer!: FileExplorer;
   private editor!: EditorPane;
+  private rightSidebar: RightSidebar | null = null;
   private wordCountEl!: HTMLElement;
   private charCountEl!: HTMLElement;
   private modeEl!: HTMLElement;
@@ -193,11 +195,18 @@ export class AppShell extends Component {
     const leftSplit = workspace.createDiv('workspace-split mod-horizontal mod-sidedock mod-left-split');
     const resizeHandle = workspace.createDiv('workspace-leaf-resize-handle');
     const rootSplit = workspace.createDiv('workspace-split mod-vertical mod-root');
+    const rightHandle = workspace.createDiv('workspace-leaf-resize-handle mod-right');
+    const rightSplit = workspace.createDiv('workspace-split mod-horizontal mod-sidedock mod-right-split');
 
     this.addRibbonAction(ribbon, 'panel-left', 'Toggle left sidebar', () => {
       const collapsed = !leftSplit.hasClass('is-collapsed');
       leftSplit.toggleClass('is-collapsed', collapsed);
       resizeHandle.toggle(!collapsed);
+    });
+    this.addRibbonAction(ribbon, 'panel-right', 'Toggle right sidebar', () => {
+      const collapsed = !rightSplit.hasClass('is-collapsed');
+      rightSplit.toggleClass('is-collapsed', collapsed);
+      rightHandle.toggle(!collapsed);
     });
     this.addRibbonAction(ribbon, 'square-pen', 'New note', () => void this.createNote());
     ribbon.createDiv({ attr: { style: 'flex: 1' } });
@@ -221,7 +230,10 @@ export class AppShell extends Component {
     );
     this.editor = this.addChild(
       new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.vault, this.app.linkResolver, {
-        onFileChange: (file) => this.explorer?.setActiveFile(file),
+        onFileChange: (file) => {
+          this.explorer?.setActiveFile(file);
+          this.rightSidebar?.refreshAll();
+        },
         onDocChange: (text) => this.updateWordCount(text),
         onModeChange: (mode) => this.modeEl?.setText(MODE_LABELS[mode]),
         newNote: () => void this.createNote(),
@@ -244,7 +256,20 @@ export class AppShell extends Component {
     this.wordCountEl = counts.createSpan('status-bar-item-segment');
     this.charCountEl = counts.createSpan('status-bar-item-segment');
     this.updateWordCount(this.editor.getFile() ? this.editor.getText() : '');
-    this.enableSidebarResize(resizeHandle, leftSplit);
+    this.enableSidebarResize(resizeHandle, leftSplit, 1);
+    this.enableSidebarResize(rightHandle, rightSplit, -1);
+
+    this.rightSidebar = this.addChild(
+      new RightSidebar(rightSplit, {
+        app: this.app,
+        activeFile: () => this.editor.getFile(),
+        openFile: (file, from, to) =>
+          void this.openFile(file).then(() => {
+            if (from !== undefined && this.editor.getFile() === file) this.editor.scrollToOffset(from, to);
+          }),
+        openLink: (linktext, sourcePath) => void this.openLinkText(linktext, sourcePath),
+      }),
+    );
   }
 
   private addRibbonAction(parent: HTMLElement, icon: string, label: string, onClick: () => void): void {
@@ -256,7 +281,8 @@ export class AppShell extends Component {
     el.addEventListener('click', onClick);
   }
 
-  private enableSidebarResize(handle: HTMLElement, sidebar: HTMLElement): void {
+  /** `direction` is 1 when the sidebar grows to the right (left sidebar), -1 otherwise. */
+  private enableSidebarResize(handle: HTMLElement, sidebar: HTMLElement, direction: 1 | -1): void {
     this.registerDomEvent(handle, 'pointerdown', (down) => {
       down.preventDefault();
       const startX = down.clientX;
@@ -264,7 +290,7 @@ export class AppShell extends Component {
       handle.addClass('is-dragging');
       handle.setPointerCapture(down.pointerId);
       const move = (ev: PointerEvent) => {
-        const width = Math.clamp(startWidth + ev.clientX - startX, SIDEBAR_MIN, SIDEBAR_MAX);
+        const width = Math.clamp(startWidth + direction * (ev.clientX - startX), SIDEBAR_MIN, SIDEBAR_MAX);
         sidebar.style.width = `${width}px`;
       };
       const up = () => {
