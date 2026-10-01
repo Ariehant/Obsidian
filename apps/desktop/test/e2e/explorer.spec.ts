@@ -108,3 +108,23 @@ test('keeps expanded folders open across external changes', async () => {
   );
   await expect(names).toHaveText(['Dynamics', 'Kinematics']);
 });
+
+test('renaming a note rewrites links to it across the vault', async () => {
+  await page.waitForFunction(() => window.app?.metadataCache.isResolved());
+  await fileTitle(page, 'Welcome.md').click();
+  await page.locator('.view-header-title').click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('Home');
+  await page.keyboard.press('Enter');
+  await expect(fileTitle(page, 'Home.md')).toBeVisible();
+
+  await folderTitle(page, 'Projects').click();
+  await fileTitle(page, 'Projects/Robot arm.md').click({ button: 'right' });
+  await menuItem('Rename...').click();
+  await page.keyboard.type('Manipulator');
+  await page.keyboard.press('Enter');
+  await expect(fileTitle(page, 'Projects/Manipulator.md')).toBeVisible();
+
+  await expect.poll(() => fs.readFile(path.join(vaultDir, 'Home.md'), 'utf8')).toContain('[[Manipulator]]');
+  expect(await fs.readFile(path.join(vaultDir, 'Showcase.md'), 'utf8')).toContain('[[Manipulator|the arm]]');
+});

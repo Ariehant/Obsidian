@@ -3,7 +3,6 @@ import {
   Component,
   FileSystemAdapter,
   joinPath,
-  LinkResolver,
   TFolder,
   Vault,
   type TAbstractFile,
@@ -15,6 +14,8 @@ import { Notice, setIcon } from '@basalt/ui';
 import { clipboard, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc';
 import { confirm } from './confirm-modal';
+import { lazyMetadataStore } from './idb-store';
+import { WorkerParser } from './worker-parser';
 import { EditorPane, type ViewMode } from './editor-pane';
 import { FileExplorer } from './file-explorer';
 
@@ -42,7 +43,8 @@ const MODE_LABELS: Record<ViewMode, string> = {
  */
 export class AppShell extends Component {
   readonly app: App;
-  private resolver!: LinkResolver;
+  private readonly parser: WorkerParser;
+  private readonly store: ReturnType<typeof lazyMetadataStore>;
   private explorer!: FileExplorer;
   private editor!: EditorPane;
   private wordCountEl!: HTMLElement;
@@ -57,7 +59,13 @@ export class AppShell extends Component {
     const adapter = new FileSystemAdapter(vaultPath, {
       trashItem: (fullPath) => ipcRenderer.invoke(IPC.trashItem, fullPath),
     });
-    this.app = new App(new Vault(adapter));
+    this.parser = new WorkerParser('metadata-worker.js');
+    this.store = lazyMetadataStore(vaultPath);
+    this.app = new App(new Vault(adapter), {
+      parser: this.parser,
+      store: this.store,
+      fileManager: { confirmDeletion: (file) => this.confirmDeletion(file) },
+    });
   }
 
   get vault(): Vault {
@@ -66,10 +74,17 @@ export class AppShell extends Component {
 
   override onload(): void {
     document.title = `${this.vault.getName()} - Basalt`;
-    this.resolver = new LinkResolver(this.vault);
     this.buildLayout();
-    this.register(() => this.vault.close());
-    this.vault.load().catch((err) => console.error('Failed to load vault', err));
+    this.register(() => {
+      this.app.metadataCache.dispose();
+      this.vault.close();
+      this.parser.terminate();
+      this.store.close();
+    });
+    this.vault
+      .load()
+      .then(() => this.app.metadataCache.initialize())
+      .catch((err) => console.error('Failed to load vault', err));
 
     this.registerShortcuts();
     this.app.keymap.attach(window);
@@ -96,7 +111,29 @@ export class AppShell extends Component {
 
   async deleteFile(file: TAbstractFile): Promise<void> {
     const isFolder = file instanceof TFolder;
-    const ok = await confirm(this.app, {
+    const open = this.editor.getFile();
+    if (open === file || (isFolder && open?.path.startsWith(file.path + '/'))) await this.editor.save();
+    try {
+      await this.app.fileManager.promptForDeletion(file);
+    } catch (err) {
+      new Notice(`Could not delete "${file.name}": ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** Renames or moves, rewriting links across the vault. Saves the open note first. */
+  async renameFile(file: TAbstractFile, newPath: string): Promise<void> {
+    await this.editor.save();
+    try {
+      await this.app.fileManager.renameFile(file, newPath);
+    } catch (err) {
+      new Notice(`Could not rename "${file.name}": ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    }
+  }
+
+  private confirmDeletion(file: TAbstractFile): Promise<boolean> {
+    const isFolder = file instanceof TFolder;
+    return confirm(this.app, {
       title: isFolder ? 'Delete folder' : 'Delete file',
       message: isFolder
         ? `Are you sure you want to delete "${file.name}" and everything in it? It will be moved to your system trash.`
@@ -104,18 +141,6 @@ export class AppShell extends Component {
       confirmText: 'Delete',
       warning: true,
     });
-    if (!ok) return;
-    if (
-      this.editor.getFile() === file ||
-      (isFolder && this.editor.getFile()?.path.startsWith(file.path + '/'))
-    ) {
-      await this.editor.save();
-    }
-    try {
-      await this.vault.trash(file, true);
-    } catch (err) {
-      new Notice(`Could not delete "${file.name}": ${err instanceof Error ? err.message : String(err)}`);
-    }
   }
 
   async duplicate(file: TFile): Promise<void> {
@@ -143,7 +168,7 @@ export class AppShell extends Component {
   async openLinkText(linktext: string, sourcePath: string): Promise<void> {
     const { path, subpath } = parseLinktext(linktext);
     let file = path
-      ? this.resolver.getFirstLinkpathDest(path, sourcePath)
+      ? this.app.metadataCache.getFirstLinkpathDest(path, sourcePath)
       : this.vault.getFileByPath(sourcePath);
     if (!file && path) {
       if (path.split('/').some((seg) => seg === '..')) return;
@@ -187,6 +212,7 @@ export class AppShell extends Component {
         duplicate: (file) => void this.duplicate(file),
         revealInSystem: (file) =>
           void ipcRenderer.invoke(IPC.showItemInFolder, this.adapter.getFullPath(file.path)),
+        renameFile: (file, newPath) => this.renameFile(file, newPath),
         copyPath: (file) => {
           clipboard.writeText(file.path);
           new Notice('Path copied to clipboard', 2000);
@@ -194,11 +220,12 @@ export class AppShell extends Component {
       }),
     );
     this.editor = this.addChild(
-      new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.vault, this.resolver, {
+      new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.vault, this.app.linkResolver, {
         onFileChange: (file) => this.explorer?.setActiveFile(file),
         onDocChange: (text) => this.updateWordCount(text),
         onModeChange: (mode) => this.modeEl?.setText(MODE_LABELS[mode]),
         newNote: () => void this.createNote(),
+        renameFile: (file, newPath) => this.renameFile(file, newPath),
         openLink: (linktext, sourcePath) =>
           void this.openLinkText(linktext, sourcePath).catch((err) =>
             console.error('Failed to open link', err),

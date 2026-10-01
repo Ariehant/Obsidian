@@ -10,6 +10,8 @@ export interface FileExplorerHandlers {
   duplicate(file: TFile): void;
   revealInSystem(file: TAbstractFile): void;
   copyPath(file: TAbstractFile): void;
+  /** Renames or moves, updating links. */
+  renameFile(file: TAbstractFile, newPath: string): Promise<void>;
 }
 
 /** File names can't contain these on at least one supported platform. */
@@ -142,7 +144,7 @@ export class FileExplorer extends Component {
       if (commit && name && name !== displayName(file) && !INVALID_NAME_CHARS.test(name)) {
         const ext = file instanceof TFile && file.extension === 'md' ? '.md' : '';
         try {
-          await this.vault.rename(file, joinPath(file.parent?.path ?? '/', name + ext));
+          await this.handlers.renameFile(file, joinPath(file.parent?.path ?? '/', name + ext));
           return;
         } catch (err) {
           console.error('Rename failed', err);
@@ -411,8 +413,8 @@ export class FileExplorer extends Component {
       if (!folder || !dragged) return;
       ev.preventDefault();
       this.setExpanded(folder, true);
-      this.vault
-        .rename(dragged, joinPath(folder.path, dragged.name))
+      this.handlers
+        .renameFile(dragged, joinPath(folder.path, dragged.name))
         .catch((err) => console.error('Move failed', err));
     });
     this.registerDomEvent(this.filesEl, 'dragend', () => {

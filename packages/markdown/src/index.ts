@@ -8,6 +8,7 @@ export {
   type HtmlOptions,
 } from './html';
 export * from './links';
+export { computeMetadata } from './metadata';
 export { finishRenderMath, loadMathJax, renderMath } from './math';
 export * from './render';
 export * from './sections';

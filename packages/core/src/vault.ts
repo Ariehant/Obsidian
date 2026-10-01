@@ -41,6 +41,7 @@ export class Vault extends Events {
 
   /** Scans the vault, firing `create` for every entry, then starts watching for changes. */
   async load(): Promise<void> {
+    await this.loadConfig();
     await this.queue.run(() => this.scanFolder(this.root));
     if (isWatchable(this.adapter)) {
       this.stopWatching = this.adapter.watch((path) => this.onWatchEvent(path));
@@ -61,6 +62,36 @@ export class Vault extends Events {
   async whenIdle(): Promise<void> {
     if (this.pendingTimer) this.flushWatchEvents();
     await this.queue.idle();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Config (`<configDir>/app.json`; internal API that plugins use)
+
+  private config: Record<string, unknown> = {};
+  private configWrite: Promise<void> = Promise.resolve();
+
+  getConfig(key: string): any {
+    return this.config[key];
+  }
+
+  setConfig(key: string, value: unknown): void {
+    if (value === undefined) delete this.config[key];
+    else this.config[key] = value;
+    const data = JSON.stringify(this.config, null, 2);
+    this.configWrite = this.configWrite
+      .then(() => this.adapter.write(`${this.configDir}/app.json`, data))
+      .catch((err) => console.error('Failed to save app.json', err));
+  }
+
+  private async loadConfig(): Promise<void> {
+    const path = `${this.configDir}/app.json`;
+    try {
+      if (!(await this.adapter.exists(path))) return;
+      const parsed = JSON.parse(await this.adapter.read(path));
+      if (parsed && typeof parsed === 'object') this.config = parsed;
+    } catch (err) {
+      console.error('Ignoring unreadable app.json', err);
+    }
   }
 
   // ---------------------------------------------------------------------------------------

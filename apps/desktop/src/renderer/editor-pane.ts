@@ -39,6 +39,8 @@ export interface EditorPaneHandlers {
   newNote(): void;
   /** Follows a link from `sourcePath` (a wikilink target or relative Markdown link). */
   openLink(linktext: string, sourcePath: string, newLeaf: boolean): void;
+  /** Renames the open note, updating links. */
+  renameFile(file: TFile, newPath: string): Promise<void>;
 }
 
 /**
@@ -407,7 +409,7 @@ export class EditorPane extends Component {
     }
     const ext = file.extension ? `.${file.extension}` : '';
     try {
-      await this.vault.rename(file, joinPath(file.parent?.path ?? '/', name + ext));
+      await this.handlers.renameFile(file, joinPath(file.parent?.path ?? '/', name + ext));
     } catch (err) {
       console.error('Rename failed', err);
       this.renderHeader();

@@ -12,6 +12,7 @@
     "dompurify": "^3.4.16",
     "entities": "^8.1.0",
     "mathjax-full": "^3.2.1",
-    "@basalt/ui": "*"
+    "@basalt/ui": "*",
+    "@basalt/core": "*"
   }
 }

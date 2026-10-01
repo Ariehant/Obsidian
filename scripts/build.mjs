@@ -45,12 +45,26 @@ const renderer = {
   loader: { '.css': 'css' },
 };
 
+// Metadata parser worker: plain browser code, no Node access.
+const worker = {
+  ...common,
+  entryPoints: { 'metadata-worker': 'apps/desktop/src/renderer/metadata-worker.ts' },
+  outdir,
+  platform: 'browser',
+  format: 'iife',
+  target: ['chrome130'],
+};
+
 await mkdir(outdir, { recursive: true });
 await copyFile('apps/desktop/src/renderer/index.html', `${outdir}/index.html`);
 
 if (watch) {
-  const contexts = await Promise.all([esbuild.context(main), esbuild.context(renderer)]);
+  const contexts = await Promise.all([
+    esbuild.context(main),
+    esbuild.context(renderer),
+    esbuild.context(worker),
+  ]);
   await Promise.all(contexts.map((c) => c.watch()));
 } else {
-  await Promise.all([esbuild.build(main), esbuild.build(renderer)]);
+  await Promise.all([esbuild.build(main), esbuild.build(renderer), esbuild.build(worker)]);
 }

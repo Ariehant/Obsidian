@@ -130,7 +130,9 @@ describe('Notice', () => {
 });
 
 describe('Modal', () => {
-  const app = new App(new Vault({ getName: () => 'test' } as unknown as DataAdapter));
+  const app = new App(new Vault({ getName: () => 'test' } as unknown as DataAdapter), {
+    parser: { parse: () => ({}) },
+  });
 
   it('opens, closes on Escape through the keymap, and calls hooks', () => {
     const onClose = vi.fn();
