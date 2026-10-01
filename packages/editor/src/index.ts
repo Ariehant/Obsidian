@@ -6,10 +6,13 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { drawSelection, dropCursor, EditorView, keymap, rectangularSelection } from '@codemirror/view';
 import { obsidianExtensions } from '@basalt/markdown';
 import { editorHost, linkClickHandler, livePreview, type EditorHost } from './live-preview';
+import { attachmentHandlers } from './attachments';
+import { obsidianAutocomplete } from './suggest';
 import { markdownTokens } from './tokens';
 
 export { EditorState, EditorView };
 export { editorHost, livePreview, type EditorHost } from './live-preview';
+export { obsidianAutocomplete, type SuggestHost } from './suggest';
 export { markdownTokens } from './tokens';
 
 export interface EditorStateOptions {
@@ -51,6 +54,8 @@ export function markdownEditorExtensions(onChange?: (doc: string) => void): Exte
     EditorView.contentAttributes.of({ spellcheck: 'true', autocorrect: 'on', autocapitalize: 'on' }),
     obsidianMarkdown(),
     markdownTokens,
+    obsidianAutocomplete(),
+    attachmentHandlers,
     search({ top: true }),
     highlightSelectionMatches(),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),

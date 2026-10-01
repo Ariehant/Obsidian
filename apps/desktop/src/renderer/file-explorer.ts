@@ -12,6 +12,8 @@ export interface FileExplorerHandlers {
   copyPath(file: TAbstractFile): void;
   /** Renames or moves, updating links. */
   renameFile(file: TAbstractFile, newPath: string): Promise<void>;
+  /** Copies files dropped from the OS into a folder. */
+  importFiles(folder: TFolder, files: File[]): Promise<void>;
 }
 
 /** File names can't contain these on at least one supported platform. */
@@ -362,11 +364,16 @@ export class FileExplorer extends Component {
   // Drag and drop
 
   /** Folder a drop at `target` would move into, or null if `dragged` can't go there. */
+  /** Folder under the pointer: the folder itself, or the parent of a file. */
+  private folderAt(target: EventTarget | null): TFolder {
+    const over = this.fileAt(target);
+    return over instanceof TFolder ? over : (over?.parent ?? this.vault.getRoot());
+  }
+
   private dropFolder(target: EventTarget | null): TFolder | null {
     const dragged = this.dragged;
     if (!dragged) return null;
-    const over = this.fileAt(target);
-    const folder = over instanceof TFolder ? over : (over?.parent ?? this.vault.getRoot());
+    const folder = this.folderAt(target);
     if (folder === dragged.parent) return null;
     if (
       dragged instanceof TFolder &&
@@ -396,6 +403,13 @@ export class FileExplorer extends Component {
       this.items.get(file)?.selfEl.addClass('is-being-dragged');
     });
     this.registerDomEvent(this.filesEl, 'dragover', (ev) => {
+      if (!this.dragged && ev.dataTransfer?.types.includes('Files')) {
+        // Files dragged in from the OS: copy into the folder under the pointer.
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'copy';
+        this.setDropTarget(this.folderAt(ev.target));
+        return;
+      }
       const folder = this.dropFolder(ev.target);
       this.setDropTarget(folder);
       if (folder && ev.dataTransfer) {
@@ -407,6 +421,16 @@ export class FileExplorer extends Component {
       if (!this.filesEl.contains(ev.relatedTarget as Node | null)) this.setDropTarget(null);
     });
     this.registerDomEvent(this.filesEl, 'drop', (ev) => {
+      if (!this.dragged && ev.dataTransfer?.files.length) {
+        ev.preventDefault();
+        const target = this.folderAt(ev.target);
+        this.setDropTarget(null);
+        this.setExpanded(target, true);
+        this.handlers
+          .importFiles(target, Array.from(ev.dataTransfer.files))
+          .catch((err) => console.error('Import failed', err));
+        return;
+      }
       const folder = this.dropFolder(ev.target);
       const dragged = this.dragged;
       this.setDropTarget(null);

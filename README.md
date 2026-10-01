@@ -8,9 +8,9 @@ A clean-room Markdown knowledge base that works with Obsidian vaults, plugins an
 
 ## Status
 
-Phases 0 and 1 are done: open a folder as a vault, browse and manage it (context menu,
-drag-and-drop), and write in Live Preview, source mode or the reading view, with callouts,
-tables, math, embeds and link navigation. See [PLAN §9](docs/PLAN.md#9-status).
+Phases 0–2 are done: vault management, Live Preview, source and reading views, a metadata
+cache with link-updating renames, backlinks/outline/tags panes, link and tag autocomplete,
+hover previews, attachments and properties. See [PLAN §9](docs/PLAN.md#9-status).
 
 ## Development
 

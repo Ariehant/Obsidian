@@ -10,6 +10,7 @@ export {
 export * from './links';
 export { computeMetadata } from './metadata';
 export { finishRenderMath, loadMathJax, renderMath } from './math';
+export * from './properties';
 export * from './render';
 export * from './sections';
 export * from './syntax';

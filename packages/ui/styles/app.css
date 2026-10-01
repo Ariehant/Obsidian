@@ -892,3 +892,53 @@ button.mod-warning {
 .tree-item-flair:empty {
   display: none;
 }
+
+/* ---- Suggestions (editor autocomplete) ---------------------------------------------------- */
+
+.cm-tooltip.suggestion-container {
+  border: var(--border-width) solid var(--background-modifier-border-hover);
+  border-radius: var(--radius-m);
+  background-color: var(--background-secondary);
+  box-shadow: var(--shadow-l);
+  padding: var(--size-2-2);
+  font-family: var(--font-interface);
+}
+
+.cm-tooltip.suggestion-container > ul {
+  max-height: 300px;
+  min-width: 260px;
+  max-width: 460px;
+  font-family: inherit;
+}
+
+.cm-tooltip.suggestion-container > ul > li.suggestion-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  padding: var(--size-2-3) var(--size-4-2);
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.cm-tooltip.suggestion-container > ul > li.suggestion-item[aria-selected] {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.suggestion-item .cm-completionDetail {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-item .cm-completionMatchedText,
+.suggestion-highlight {
+  text-decoration: none;
+  font-weight: var(--font-bold);
+  color: var(--text-accent);
+}

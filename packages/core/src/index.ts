@@ -11,4 +11,5 @@ export * from './link-resolver';
 export * from './metadata-cache';
 export * from './metadata-types';
 export * from './path';
+export * from './search';
 export * from './vault';

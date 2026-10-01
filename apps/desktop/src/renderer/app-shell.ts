@@ -18,6 +18,7 @@ import { lazyMetadataStore } from './idb-store';
 import { WorkerParser } from './worker-parser';
 import { EditorPane, type ViewMode } from './editor-pane';
 import { FileExplorer } from './file-explorer';
+import { HoverPreview } from './hover-preview';
 import { RightSidebar } from './sidebar/right-sidebar';
 
 const SIDEBAR_MIN = 180;
@@ -133,6 +134,24 @@ export class AppShell extends Component {
     }
   }
 
+  /** Copies files from the OS into `folder`, renaming on collisions. */
+  async importFiles(folder: TFolder, files: File[]): Promise<void> {
+    for (const f of files) {
+      const dot = f.name.lastIndexOf('.');
+      const base = dot > 0 ? f.name.slice(0, dot) : f.name;
+      const ext = dot > 0 ? f.name.slice(dot) : '';
+      try {
+        await this.vault.createBinary(
+          availablePath(this.vault, folder.path, base, ext),
+          await f.arrayBuffer(),
+        );
+      } catch (err) {
+        // Folders dropped from the OS can't be read as files.
+        new Notice(`Could not import "${f.name}": ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
   private confirmDeletion(file: TAbstractFile): Promise<boolean> {
     const isFolder = file instanceof TFolder;
     return confirm(this.app, {
@@ -222,6 +241,7 @@ export class AppShell extends Component {
         revealInSystem: (file) =>
           void ipcRenderer.invoke(IPC.showItemInFolder, this.adapter.getFullPath(file.path)),
         renameFile: (file, newPath) => this.renameFile(file, newPath),
+        importFiles: (folder, files) => this.importFiles(folder, files),
         copyPath: (file) => {
           clipboard.writeText(file.path);
           new Notice('Path copied to clipboard', 2000);
@@ -229,7 +249,7 @@ export class AppShell extends Component {
       }),
     );
     this.editor = this.addChild(
-      new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.vault, this.app.linkResolver, {
+      new EditorPane(rootSplit.createDiv('workspace-leaf mod-active'), this.app, {
         onFileChange: (file) => {
           this.explorer?.setActiveFile(file);
           this.rightSidebar?.refreshAll();
@@ -258,6 +278,15 @@ export class AppShell extends Component {
     this.updateWordCount(this.editor.getFile() ? this.editor.getText() : '');
     this.enableSidebarResize(resizeHandle, leftSplit, 1);
     this.enableSidebarResize(rightHandle, rightSplit, -1);
+
+    this.addChild(
+      new HoverPreview(
+        this.app,
+        () => this.editor.renderHost(),
+        () => this.editor.getFile(),
+        (linktext, sourcePath) => void this.openLinkText(linktext, sourcePath),
+      ),
+    );
 
     this.rightSidebar = this.addChild(
       new RightSidebar(rightSplit, {

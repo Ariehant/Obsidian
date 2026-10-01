@@ -320,10 +320,35 @@ Deferred from Phase 1, with the phase that picks them up:
 - dropping OS files into the explorer, and attachment paste (Phase 2, with the
   attachment-folder setting).
 
-### Phase 2: next
+### Phase 2: done
 
-1. `MetadataCache` in a worker: headings, links, embeds, tags, blocks, sections,
-   frontmatter per file; resolved/unresolved link maps; persisted for fast startup.
-2. Rename → rewrite links; backlinks, outgoing links, outline and tags panes.
-3. Link, heading and tag autocomplete; hover previews.
-4. Properties editor and attachments (paste/drop into the vault).
+- `MetadataCache` (plugin API): headings, links, embeds, tags, blocks, sections, list items,
+  footnotes and frontmatter per note from the shared grammar; resolved/unresolved link maps;
+  `changed`/`deleted`/`resolve`/`resolved` events; backlinks and tag counts. Parsing runs in
+  a Web Worker pool, and results persist in IndexedDB, so startup re-parses only changed notes.
+- `FileManager` (plugin API): renames rewrite wikilinks, embeds, Markdown links and
+  frontmatter links, keeping subpaths and aliases; link generation follows the link-format
+  settings; `processFrontMatter`; attachment paths; trash setting. Settings read from
+  `.obsidian/app.json` through `vault.getConfig`.
+- Right sidebar: backlinks (linked and unlinked mentions, one-click linking), outgoing links,
+  outline, tags (nested, with counts).
+- Editor: `[[` link autocomplete with aliases, `#heading` and `#^block` targets, `#tag`
+  autocomplete, all ranked by `prepareFuzzySearch`; hover previews (reading view, previews,
+  and Ctrl/Cmd-hover in the editor).
+- Attachments: paste or drop files into a note (saved per the attachment-folder setting,
+  embedded); drop OS files on the explorer to import them.
+- Properties: typed frontmatter (text, list, number, checkbox, date, date-time, tags,
+  aliases), editable in Live Preview and read-only in the reading view.
+
+Deferred from Phase 2:
+
+- per-property type overrides (`types.json`) and the "All properties" view (Phase 6, with
+  settings);
+- unlinked mentions in the outgoing-links pane;
+- search-backed tag clicks (Phase 4).
+
+### Phase 3: next
+
+The workspace: splits, tab groups, drag tabs to split, linked panes, navigation history,
+popout windows, `workspace.json` persistence, and file views for images, PDF, audio and
+video. Plugin-facing `Workspace`, `WorkspaceLeaf`, `ItemView`, `MarkdownView` and `FileView`.

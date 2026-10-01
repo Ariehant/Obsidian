@@ -2,11 +2,13 @@
  * Markdown → DOM for the reading view: render to HTML, sanitise, then run the built-in
  * post-processors (callouts, math, links, images, embeds).
  */
+import { getFrontMatterInfo, parseYaml } from '@basalt/core';
 import { setIcon } from '@basalt/ui';
 import createDOMPurify, { type Config, type DOMPurify } from 'dompurify';
 import { markdownToHtml, type HtmlOptions } from './html';
 import { getLinkpath, isExternalUrl, parseLinktext } from './links';
 import { finishRenderMath, loadMathJax, renderMath } from './math';
+import { renderProperties } from './properties';
 import { resolveSubpath } from './sections';
 
 /** A file the host resolved a link to. Structurally compatible with core's `TFile`. */
@@ -24,6 +26,8 @@ export interface RenderHost {
 }
 
 export interface RenderOptions extends HtmlOptions {
+  /** Show frontmatter as a read-only properties block (reading view; not embeds). */
+  properties?: boolean;
   /** Vault path of the note being rendered; links resolve relative to it. */
   sourcePath: string;
   host?: RenderHost;
@@ -73,6 +77,23 @@ export function sanitizeHTMLToDom(html: string): DocumentFragment {
 
 /** Renders Markdown into `el` (appending). Resolves once async post-processing is done. */
 export async function renderMarkdown(source: string, el: HTMLElement, options: RenderOptions): Promise<void> {
+  if (options.properties) {
+    const info = getFrontMatterInfo(source);
+    if (info.exists) {
+      let fm: unknown = null;
+      try {
+        fm = parseYaml(info.frontmatter);
+      } catch {
+        /* invalid YAML: no properties block */
+      }
+      if (fm && typeof fm === 'object' && !Array.isArray(fm) && Object.keys(fm).length) {
+        renderProperties(
+          el.createDiv({ cls: 'mod-header', attr: { 'data-line': '0' } }),
+          fm as Record<string, unknown>,
+        );
+      }
+    }
+  }
   const html = markdownToHtml(source, { sections: true, ...options });
   el.appendChild(sanitizeHTMLToDom(html));
   await postProcess(el, options);

@@ -86,6 +86,8 @@ test('outgoing links show resolved and unresolved targets', async () => {
 test('tags pane counts nested tags', async () => {
   await tab('tag').click();
   const tags = pane('tag');
-  await expect(tags.locator('.tag-pane-tag[data-tag="#robotics"] .tag-pane-tag-count')).toHaveText('2');
+  // #robotics in Log, #robotics/arm in Log, and frontmatter tags in Kinematics.
+  await expect(tags.locator('.tag-pane-tag[data-tag="#robotics"] .tag-pane-tag-count')).toHaveText('3');
+  await expect(tags.locator('.tag-pane-tag[data-tag="#theory"]')).toBeVisible();
   await expect(tags.locator('.tag-pane-tag[data-tag="#robotics/arm"] .tag-pane-tag-text')).toHaveText('arm');
 });

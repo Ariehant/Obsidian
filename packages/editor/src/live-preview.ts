@@ -28,10 +28,13 @@ import {
   parseCalloutHeader,
   parseLinktext,
   renderMath,
+  renderProperties,
   sanitizeHTMLToDom,
   type LinkedFile,
 } from '@basalt/markdown';
+import { parseYaml, stringifyYaml } from '@basalt/core/src/frontmatter';
 import type { SyntaxNode } from '@lezer/common';
+import type { SuggestHost } from './suggest';
 
 /** What the editor needs from the app to resolve and render links. */
 export interface EditorHost {
@@ -40,6 +43,10 @@ export interface EditorHost {
   openLink(linktext: string, newLeaf: boolean): void;
   /** Renders Markdown with the reading-view pipeline (embeds, links, math). */
   renderMarkdown(source: string, el: HTMLElement): Promise<void>;
+  /** Link and tag suggestions; autocomplete is off without it. */
+  suggest?: SuggestHost;
+  /** Saves pasted or dropped files into the vault; resolves to the text to insert for each. */
+  saveAttachments?(files: File[]): Promise<string[]>;
 }
 
 export const editorHost = Facet.define<EditorHost | null, EditorHost | null>({
@@ -209,10 +216,61 @@ interface BlockRange {
   to: number;
 }
 
+/** Editable properties for the frontmatter block; edits rewrite the YAML. */
+class PropertiesWidget extends WidgetType {
+  constructor(
+    readonly yaml: string,
+    readonly from: number,
+    readonly to: number,
+  ) {
+    super();
+  }
+  override eq(other: PropertiesWidget): boolean {
+    return other.yaml === this.yaml && other.from === this.from && other.to === this.to;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'cm-embed-block cm-properties';
+    let data: Record<string, unknown> = {};
+    try {
+      const parsed = this.yaml.trim() ? parseYaml(this.yaml) : {};
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) data = parsed;
+    } catch {
+      /* the field never builds this widget for invalid YAML */
+    }
+    renderProperties(el, data, {
+      onChange: (next) => {
+        const body = Object.keys(next).length ? stringifyYaml(next) : '';
+        view.dispatch({ changes: { from: this.from, to: this.to, insert: `---\n${body}---` } });
+      },
+    });
+    // Clicking the heading shows the YAML source.
+    el.querySelector('.metadata-properties-heading')?.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      view.dispatch({ selection: { anchor: this.from + 4 } });
+      view.focus();
+    });
+    return el;
+  }
+  override ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+function validYaml(yaml: string): boolean {
+  try {
+    const parsed = yaml.trim() ? parseYaml(yaml) : {};
+    return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
 function blockCandidates(state: EditorState): Array<{ node: SyntaxNode; kind: string }> {
   const out: Array<{ node: SyntaxNode; kind: string }> = [];
   for (let node = syntaxTree(state).topNode.firstChild; node; node = node.nextSibling) {
-    if (node.name === 'Table' || node.name === 'MathBlock') out.push({ node, kind: node.name });
+    if (node.name === 'Frontmatter') out.push({ node, kind: 'properties' });
+    else if (node.name === 'Table' || node.name === 'MathBlock') out.push({ node, kind: node.name });
     else if (node.name === 'Blockquote') {
       const firstLine = state.doc.lineAt(node.from);
       const text = state.doc.sliceString(firstLine.from, firstLine.to).replace(/^\s*>\s?/, '');
@@ -231,7 +289,12 @@ function buildBlocks(state: EditorState): { decorations: DecorationSet; ranges: 
     if (touches(state, from, to)) continue;
     const source = state.doc.sliceString(from, to);
     let widget: WidgetType;
-    if (kind === 'MathBlock') {
+    if (kind === 'properties') {
+      const content = node.getChild('FrontmatterContent');
+      const yaml = content ? state.doc.sliceString(content.from, content.to) : '';
+      if (!validYaml(yaml)) continue;
+      widget = new PropertiesWidget(yaml, node.from, node.to);
+    } else if (kind === 'MathBlock') {
       const tex = source.trim().replace(/^\$\$/, '').replace(/\$\$$/, '').trim();
       widget = new MathWidget(tex, true);
     } else {

@@ -114,3 +114,23 @@ describe('Live Preview', () => {
     expect(line(v, 0).textContent).toBe('bold');
   });
 });
+
+describe('properties widget', () => {
+  it('renders frontmatter as properties and writes edits back as YAML', () => {
+    const v = open('---\nstatus: draft\ntags: [a]\n---\n# Body\n\nx');
+    const status = v.contentDOM.querySelector<HTMLInputElement>(
+      '[data-property-key="status"] .metadata-input',
+    )!;
+    expect(status.value).toBe('draft');
+    status.value = 'done';
+    status.dispatchEvent(new Event('blur'));
+    expect(v.state.doc.toString()).toBe('---\nstatus: done\ntags:\n  - a\n---\n# Body\n\nx');
+  });
+
+  it('shows the YAML source when the cursor is inside or the YAML is invalid', () => {
+    const v = open('---\nstatus: draft\n---\nx', 5);
+    expect(v.contentDOM.querySelector('.metadata-container')).toBeNull();
+    const bad = open('---\nkey: [unclosed\n---\nx');
+    expect(bad.contentDOM.querySelector('.metadata-container')).toBeNull();
+  });
+});

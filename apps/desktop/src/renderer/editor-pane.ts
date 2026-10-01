@@ -1,10 +1,12 @@
 import {
   Component,
+  parseFrontMatterAliases,
   joinPath,
-  type LinkResolver,
   type TAbstractFile,
   type TFile,
   type Vault,
+  type App,
+  type MetadataCache,
 } from '@basalt/core';
 import {
   createEditorState,
@@ -68,8 +70,7 @@ export class EditorPane extends Component {
 
   constructor(
     parentEl: HTMLElement,
-    private readonly vault: Vault,
-    private readonly resolver: LinkResolver,
+    private readonly app: App,
     private readonly handlers: EditorPaneHandlers,
   ) {
     super();
@@ -139,6 +140,14 @@ export class EditorPane extends Component {
     this.registerDomEvent(this.titleEl, 'blur', () => void this.commitTitle());
     this.registerDomEvent(this.readingEl, 'click', (ev) => this.onReadingClick(ev));
     this.register(() => this.view.destroy());
+  }
+
+  private get vault(): Vault {
+    return this.app.vault;
+  }
+
+  private get metadataCache(): MetadataCache {
+    return this.app.metadataCache;
   }
 
   getFile(): TFile | null {
@@ -259,9 +268,9 @@ export class EditorPane extends Component {
   // ---------------------------------------------------------------------------------------
   // Internals
 
-  private renderHost(): RenderHost {
+  renderHost(): RenderHost {
     return {
-      resolveLink: (linkpath, sourcePath) => this.resolver.getFirstLinkpathDest(linkpath, sourcePath),
+      resolveLink: (linkpath, sourcePath) => this.metadataCache.getFirstLinkpathDest(linkpath, sourcePath),
       resourceUrl: (f) => this.vault.getResourcePath(f as TFile),
       readNote: (f) => this.vault.cachedRead(f as TFile),
     };
@@ -270,12 +279,58 @@ export class EditorPane extends Component {
   /** Link resolution for the editor, bound to the file (whose path follows renames). */
   private editorHost(file: TFile): EditorHost {
     const host = this.renderHost();
+    const cache = this.metadataCache;
     return {
       resolveLink: (linkpath) => host.resolveLink(linkpath, file.path),
       resourceUrl: host.resourceUrl,
       openLink: (linktext, newLeaf) => this.handlers.openLink(linktext, file.path, newLeaf),
       renderMarkdown: (source, el) => renderMarkdown(source, el, { sourcePath: file.path, host }),
+      suggest: {
+        files: () =>
+          this.vault.getFiles().map((f) => ({
+            file: f,
+            aliases:
+              f.extension === 'md' ? (parseFrontMatterAliases(cache.getFileCache(f)?.frontmatter) ?? []) : [],
+          })),
+        linktext: (target) => cache.fileToLinktext(target as TFile, file.path),
+        headings: (linkpath) => {
+          const target = this.linkTarget(linkpath, file);
+          return target ? (cache.getFileCache(target)?.headings ?? []).map((h) => h.heading) : [];
+        },
+        blocks: (linkpath) => {
+          const target = this.linkTarget(linkpath, file);
+          const blocks = target ? Object.values(cache.getFileCache(target)?.blocks ?? {}) : [];
+          // Previews come from the editor for the open note; other notes show only ids.
+          const text = target === file ? this.getText() : '';
+          return blocks.map((b) => ({
+            id: b.id,
+            text: text.slice(b.position.start.offset, b.position.end.offset).replace(/\s*\^[\w-]+\s*$/, ''),
+          }));
+        },
+        tags: () => Object.keys(cache.getTags()),
+      },
+      saveAttachments: (files) => this.saveAttachments(files, file),
     };
+  }
+
+  /** Saves files into the attachment folder and returns an embed link for each. */
+  private async saveAttachments(files: File[], note: TFile): Promise<string[]> {
+    const links: string[] = [];
+    for (const f of files) {
+      const ext = f.name.includes('.')
+        ? f.name.slice(f.name.lastIndexOf('.') + 1)
+        : (f.type.split('/')[1] ?? 'bin');
+      // Clipboard images arrive as "image.png"; name them like the app does.
+      const name = !f.name || /^image\.\w+$/.test(f.name) ? `Pasted image ${timestamp()}.${ext}` : f.name;
+      const path = await this.app.fileManager.getAvailablePathForAttachment(name, note.path);
+      const created = await this.vault.createBinary(path, await f.arrayBuffer());
+      links.push('!' + this.app.fileManager.generateMarkdownLink(created, note.path));
+    }
+    return links;
+  }
+
+  private linkTarget(linkpath: string, from: TFile): TFile | null {
+    return linkpath.trim() ? this.metadataCache.getFirstLinkpathDest(linkpath, from.path) : from;
   }
 
   private newState(doc: string, file: TFile | null): EditorState {
@@ -298,7 +353,11 @@ export class EditorPane extends Component {
     const token = ++this.renderToken;
     if (!file) return;
     const staging = createDiv();
-    await renderMarkdown(this.getText(), staging, { sourcePath: file.path, host: this.renderHost() });
+    await renderMarkdown(this.getText(), staging, {
+      sourcePath: file.path,
+      host: this.renderHost(),
+      properties: true,
+    });
     // Drop stale renders (the file or text changed while embeds were loading).
     if (token !== this.renderToken || file !== this.file) return;
     const scroll = this.readingEl.scrollTop;
@@ -453,4 +512,10 @@ export class EditorPane extends Component {
       this.breadcrumbEl.createSpan({ cls: 'view-header-breadcrumb-separator', text: '/' });
     }
   }
+}
+
+/** `YYYYMMDDHHmmss` in local time, as used for pasted image names. */
+function timestamp(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
